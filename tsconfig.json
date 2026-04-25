@@ -13,7 +13,8 @@
     "typeRoots": [
       "./node_modules/@types"
     ],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "sourceMap": true
   },
   "exclude": [
     "node_modules"

@@ -13,6 +13,12 @@ export class Conversation {
         this.messages.push({ role: 'assistant', content });
     }
 
+    // 追加 agent loop 每一步产生的原始消息（含 tool-call / tool-result）
+    // 这样 getHistory() 可以还原出完整的对话上下文
+    appendMessages(newMessages: readonly ModelMessage[]): void {
+        this.messages.push(...newMessages);
+    }
+
     // 返回只读快照，防止外部直接修改历史
     getHistory(): readonly ModelMessage[] {
         return this.messages;

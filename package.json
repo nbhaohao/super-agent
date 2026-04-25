@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "debug": "tsx --inspect-brk src/index.ts",
     "start": "tsc && node dist/index.js"
   },
   "keywords": [],
