@@ -1,30 +1,24 @@
 import { streamText } from 'ai';
 import type { LanguageModel, ModelMessage } from 'ai';
+import { detect, recordCall, recordResult, resetHistory } from './loop-detection.js';
 import { log } from '../lib/logger.js';
 
 type Tools = NonNullable<Parameters<typeof streamText>[0]['tools']>;
 
-const MAX_STEPS = 10;
+const MAX_STEPS = 15;
 
-// AgentStreamPart 是应用层与 CLI 层之间的契约
-// CLI 只处理这三种事件，不需要关心 AI SDK 内部类型
 export type AgentStreamPart =
     | { type: 'text'; text: string }
     | { type: 'tool-call'; toolName: string; input: unknown }
     | { type: 'tool-result'; toolName: string; output: unknown };
 
-// agentLoop 实现手动 agent loop：每次只跑一步 streamText，靠 hasToolCall 决定是否继续
-//
-// 相比 SDK 内置的 stopWhen 方案，手写循环的好处：
-//   - 每一步的 messages 完全可控，可以在步骤间插入自定义逻辑（记忆、审计、截断等）
-//   - result.response.messages 包含完整的 tool-call / tool-result 消息对，追加后 LLM 能看到完整上下文
-//   - 退出条件更直观：没有工具调用 = LLM 认为已经可以直接回复
 export async function* agentLoop(
     model: LanguageModel,
     tools: Tools,
-    messages: ModelMessage[], // 可变数组，每一步会追加新消息
+    messages: ModelMessage[],
     system: string,
 ): AsyncGenerator<AgentStreamPart> {
+    resetHistory(); // 每轮对话开始时清空滑动窗口
     let step = 0;
 
     while (step < MAX_STEPS) {
@@ -36,11 +30,14 @@ export async function* agentLoop(
             system,
             tools,
             messages,
-            // 不设 stopWhen，每次只跑一步，由我们自己控制循环
+            maxRetries: 0,                    // 禁止重试，防止干扰死循环计数
+            onError: (e) => log('streamText error', String(e)),
         });
 
         let hasToolCall = false;
         let fullText = '';
+        let shouldBreak = false;
+        let lastToolCall: { name: string; input: unknown } | null = null;
 
         for await (const part of result.fullStream) {
             switch (part.type) {
@@ -49,32 +46,61 @@ export async function* agentLoop(
                     yield { type: 'text', text: part.text };
                     break;
 
-                case 'tool-call':
+                case 'tool-call': {
                     hasToolCall = true;
-                    log('tool-call', `${part.toolName}(${JSON.stringify(part.input)})`);
+                    lastToolCall = { name: part.toolName, input: part.input };
+
+                    // detect 必须在 recordCall 之前调用
+                    // 此时 history 里还没有当前这次调用，探测器依赖这个时序
+                    const detection = detect(part.toolName, part.input);
+
                     yield { type: 'tool-call', toolName: part.toolName, input: part.input };
+
+                    if (detection.stuck) {
+                        yield { type: 'text', text: `\n  ${detection.message}` };
+                        log('loop-detection', detection.message);
+
+                        if (detection.level === 'critical') {
+                            shouldBreak = true;
+                        } else {
+                            // 警告级别：向 LLM 注入系统提示，引导它换个思路
+                            // 这条 user 消息会随 messages 同步回 Conversation，后续轮次 LLM 也能看到
+                            messages.push({
+                                role: 'user' as const,
+                                content: `[系统提醒] ${detection.message}。请换一个思路解决问题，不要重复同样的操作。`,
+                            });
+                        }
+                    }
+
+                    recordCall(part.toolName, part.input);
                     break;
+                }
 
                 case 'tool-result':
+                    if (lastToolCall) {
+                        recordResult(lastToolCall.name, lastToolCall.input, part.output);
+                    }
                     log('tool-result', `${part.toolName} → ${JSON.stringify(part.output)}`);
                     yield { type: 'tool-result', toolName: part.toolName, output: part.output };
                     break;
             }
         }
 
-        // 拿到这一步的完整消息（含 tool-call / tool-result 对），追加到历史
-        // 下一步 streamText 收到的 messages 就包含了工具调用结果，LLM 才能继续思考
+        // critical 检测触发：流已消费完，现在安全退出
+        if (shouldBreak) {
+            yield { type: 'text', text: '\n[循环检测触发，Agent 已停止]' };
+            break;
+        }
+
         const stepResponse = await result.response;
         messages.push(...(stepResponse.messages as ModelMessage[]));
         log(`step ${step} messages appended`, `history now: ${messages.length}`);
 
-        // 退出条件：LLM 没有调用任何工具，说明它已经直接给出了最终回复
         if (!hasToolCall) {
             if (fullText) log(`step ${step} done`, 'no tool call, loop complete');
             break;
         }
 
-        // 还有工具调用 → 继续，让 LLM 看到工具结果后继续思考
         log(`step ${step}`, 'tool call detected, continuing...');
     }
 
