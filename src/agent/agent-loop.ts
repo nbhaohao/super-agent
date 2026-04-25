@@ -3,11 +3,11 @@ import type { LanguageModel, ModelMessage } from 'ai';
 import { detect, recordCall, recordResult, resetHistory } from './loop-detection.js';
 import { isRetryable, calculateDelay, sleep } from './retry.js';
 import { log } from '../lib/logger.js';
-
-type Tools = NonNullable<Parameters<typeof streamText>[0]['tools']>;
+import type { ToolRegistry } from '../tools/registry.js';
 
 const MAX_STEPS = 15;
 const MAX_RETRIES = 3;
+const TOKEN_BUDGET = 50000;
 
 export interface AgentOptions {
     detectLoops?: boolean;  // default: true
@@ -23,7 +23,7 @@ export type AgentStreamPart =
 
 export async function* agentLoop(
     model: LanguageModel,
-    tools: Tools,
+    registry: ToolRegistry,
     messages: ModelMessage[],
     system: string,
     options: AgentOptions = {},
@@ -62,7 +62,7 @@ export async function* agentLoop(
                 const result = streamText({
                     model,
                     system,
-                    tools,
+                    tools: registry.toAISDKFormat(),
                     messages,
                     maxRetries: 0, // we own retries
                     onError: (e) => log('streamText error', String(e)),

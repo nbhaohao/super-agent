@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { ChatAgent } from '../agent/chat-agent.js';
-import { demoTools } from '../tools/index.js';
+import { ToolRegistry } from '../tools/registry.js';
+import { demoToolDefs } from '../tools/index.js';
 import { resetRetryCounters } from '../providers/mock.js';
 
 interface Models {
@@ -74,7 +75,9 @@ export function runWebServer(agent: ChatAgent, models: Models): void {
         if (!trigger) return c.json({ error: 'unknown scenario' }, 400);
 
         resetRetryCounters();
-        const demoAgent = new ChatAgent(models.mockModel, demoTools);
+        const demoRegistry = new ToolRegistry();
+        demoRegistry.register(...demoToolDefs);
+        const demoAgent = new ChatAgent(models.mockModel, demoRegistry);
 
         return streamSSE(c, async (stream) => {
             try {

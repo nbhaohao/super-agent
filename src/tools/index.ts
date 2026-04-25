@@ -1,14 +1,19 @@
 import { weatherTool } from './weather.js';
 import { calculatorTool } from './calculator.js';
 import { checkStatusTool } from './check-status.js';
+import { readFileTool } from './read-file.js';
+import { writeFileTool } from './write-file.js';
+import { listDirectoryTool } from './list-directory.js';
 
-export const tools = {
-    get_weather: weatherTool,
-    calculator: calculatorTool,
-};
+export type { ToolDefinition } from './registry.js';
+export { ToolRegistry } from './registry.js';
 
-// demo 场景专用：包含 check_status
-export const demoTools = {
-    get_weather: weatherTool,
-    check_status: checkStatusTool,
-};
+// 主流程工具
+export const allTools = [
+    weatherTool, calculatorTool, readFileTool, writeFileTool, listDirectoryTool,
+];
+
+// 循环检测 demo 专用
+export const demoToolDefs = [
+    weatherTool, checkStatusTool,
+];
