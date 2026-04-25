@@ -1,15 +1,13 @@
 import { createInterface } from 'node:readline';
-import type { ChatAgent } from '../../application/chat-agent.js';
+import type { ChatAgent, AgentStreamPart } from '../../application/chat-agent.js';
 
-// CLI 适配器：负责所有 I/O 交互，与业务逻辑完全解耦
-// 替换成 HTTP server 或 WebSocket 时只改这一层
 export async function runCLI(agent: ChatAgent): Promise<void> {
     const rl = createInterface({
         input: process.stdin,
         output: process.stdout,
     });
 
-    console.log('Super Agent v0.1 (type "exit" to quit)\n');
+    console.log('Super Agent v0.2 — Agent Loop (type "exit" to quit)\n');
 
     function ask() {
         rl.question('\nYou: ', async (input) => {
@@ -21,8 +19,8 @@ export async function runCLI(agent: ChatAgent): Promise<void> {
             }
 
             process.stdout.write('Assistant: ');
-            for await (const chunk of agent.chat(trimmed)) {
-                process.stdout.write(chunk);
+            for await (const part of agent.chat(trimmed)) {
+                renderPart(part);
             }
             console.log();
 
@@ -31,4 +29,18 @@ export async function runCLI(agent: ChatAgent): Promise<void> {
     }
 
     ask();
+}
+
+function renderPart(part: AgentStreamPart): void {
+    switch (part.type) {
+        case 'text':
+            process.stdout.write(part.text);
+            break;
+        case 'tool-call':
+            console.log(`\n  [调用工具: ${part.toolName}(${JSON.stringify(part.input)})]`);
+            break;
+        case 'tool-result':
+            console.log(`  [工具返回: ${JSON.stringify(part.output)}]`);
+            break;
+    }
 }
