@@ -372,8 +372,11 @@
     }
     .card-msg.tool-call  .card-msg-body { background: #0c2137; border-left: 3px solid var(--blue);   color: var(--blue); }
     .card-msg.tool-result .card-msg-body { background: #0c2318; border-left: 3px solid var(--green);  color: var(--green); }
-    .card-msg.detect-warn .card-msg-body { background: #1f1a0e; border-left: 3px solid var(--yellow); color: var(--yellow); }
-    .card-msg.detect-stop .card-msg-body { background: #1f0e0e; border-left: 3px solid var(--red);    color: var(--red); font-weight: 600; }
+    .card-msg.detect-warn  .card-msg-body { background: #1f1a0e; border-left: 3px solid var(--yellow); color: var(--yellow); }
+    .card-msg.detect-stop  .card-msg-body { background: #1f0e0e; border-left: 3px solid var(--red);    color: var(--red); font-weight: 600; }
+    .card-msg.retry-attempt .card-msg-body { background: #1f1a0e; border-left: 3px solid var(--yellow); color: var(--yellow); }
+    .card-msg.retry-success .card-msg-body { background: #0c2318; border-left: 3px solid var(--green);  color: var(--green); font-weight: 600; }
+    .card-msg.retry-fail    .card-msg-body { background: #1f0e0e; border-left: 3px solid var(--red);    color: var(--red);   font-weight: 600; }
     .card-msg-args { opacity: 0.75; }
 
     .card-stats {
@@ -408,6 +411,9 @@
     </div>
     <div class="nav-item" data-view="demo" onclick="switchView('demo', this)">
       <span class="nav-icon">🔁</span> 循环检测
+    </div>
+    <div class="nav-item" data-view="retry" onclick="switchView('retry', this)">
+      <span class="nav-icon">🛡️</span> API 容错
     </div>
   </nav>
 
@@ -519,6 +525,60 @@
               <span class="detect-status detect-on">ON</span>
             </div>
             <button class="run-btn" onclick="runScenario('polling', this)">▶ 运行</button>
+          </div>
+          <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ VIEW: API RETRY ═══════════ -->
+    <div class="view" id="view-retry">
+      <div class="demo-header">
+        <span class="demo-header-title">API 容错</span>
+        <span class="demo-header-sub">对比启用 / 禁用重试的区别 · 指数退避 + 随机抖动 · 基于 Mock 模型</span>
+      </div>
+
+      <div class="cards">
+        <!-- Card 1: retry success -->
+        <div class="card" id="card-retry_success">
+          <div class="card-head">
+            <div class="card-title">重试成功</div>
+            <div class="card-desc">前两次请求返回 500 错误，第三次恢复正常。<br>启用重试时可以看到指数退避的等待过程，最终成功。</div>
+          </div>
+          <div class="card-controls">
+            <div class="card-toggle-wrap">
+              <span>启用重试</span>
+              <label class="card-toggle">
+                <input type="checkbox" checked onchange="updateDetectLabel(this)">
+                <span class="toggle-track"></span>
+                <span class="toggle-thumb"></span>
+              </label>
+              <span class="detect-status detect-on">ON</span>
+            </div>
+            <button class="run-btn" onclick="runRetryScenario('retry_success', this)">▶ 运行</button>
+          </div>
+          <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
+
+        <!-- Card 2: retry fail -->
+        <div class="card" id="card-retry_fail">
+          <div class="card-head">
+            <div class="card-title">持续失败</div>
+            <div class="card-desc">请求始终返回 503 错误，无法恢复。<br>启用重试时会耗尽所有重试次数后才最终报错。</div>
+          </div>
+          <div class="card-controls">
+            <div class="card-toggle-wrap">
+              <span>启用重试</span>
+              <label class="card-toggle">
+                <input type="checkbox" checked onchange="updateDetectLabel(this)">
+                <span class="toggle-track"></span>
+                <span class="toggle-thumb"></span>
+              </label>
+              <span class="detect-status detect-on">ON</span>
+            </div>
+            <button class="run-btn" onclick="runRetryScenario('retry_fail', this)">▶ 运行</button>
           </div>
           <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
           <div class="card-stats"><div class="stat-banner idle">—</div></div>
@@ -854,6 +914,86 @@
       } finally {
         btn.disabled = false;
       }
+    }
+    // ── API Retry Demo ──
+    async function runRetryScenario(scenario, btn) {
+      const { log, stats, toggle } = getCardEls(scenario);
+      const retryEnabled = toggle.checked;
+      btn.disabled = true;
+      log.innerHTML = '';
+      stats.innerHTML = '<div class="stat-banner idle">运行中…</div>';
+
+      let retryCount = 0;
+      let succeeded = false;
+
+      try {
+        const res = await fetch('/api/demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario, detectLoops: false, retryEnabled }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            switch (event.type) {
+              case 'retry':
+                retryCount++;
+                appendCardMsg(log, 'retry-attempt',
+                  `retry ${event.attempt} / ${event.maxRetries}`,
+                  `⚠ 请求失败 — ${event.delayMs}ms 后重试…<br><span style="opacity:0.6">${event.error}</span>`);
+                break;
+              case 'text':
+                if (event.text.trim()) {
+                  succeeded = true;
+                  appendCardMsg(log, 'retry-success', '✓ success', event.text.trim());
+                }
+                break;
+              case 'stats':
+                renderRetryStats(stats, { retryCount: event.retryCount, succeeded: true, retryEnabled });
+                break;
+              case 'error':
+                appendCardMsg(log, 'retry-fail', '✗ failed', event.message);
+                renderRetryStats(stats, { retryCount, succeeded: false, retryEnabled });
+                break;
+            }
+          }
+        }
+      } catch (e) {
+        appendCardMsg(log, 'retry-fail', '✗ error', e.message);
+        renderRetryStats(stats, { retryCount, succeeded: false, retryEnabled });
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function renderRetryStats(statsEl, { retryCount, succeeded, retryEnabled }) {
+      const bannerClass = succeeded ? 'detected' : 'maxsteps';
+      const bannerText = !retryEnabled
+        ? (succeeded ? '✓ 首次请求成功' : '✗ 未启用重试，立即失败')
+        : succeeded
+          ? `✓ 第 ${retryCount + 1} 次请求成功（重试 ${retryCount} 次）`
+          : `✗ 已耗尽全部 ${retryCount} 次重试机会`;
+      statsEl.innerHTML = `
+        <div class="stat-banner ${bannerClass}">${bannerText}</div>
+        <div class="stat-row">
+          <span class="stat-chip"><span class="stat-label">重试次数</span><span class="stat-value">${retryCount}</span></span>
+          <span class="stat-chip"><span class="stat-label">结果</span><span class="${succeeded ? 'stat-saved' : 'stat-full'}">${succeeded ? '成功' : '失败'}</span></span>
+        </div>`;
     }
   </script>
 </body>

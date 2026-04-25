@@ -1,4 +1,4 @@
-type Intent = 'dead_loop' | 'ping_pong' | 'polling' | 'retry_error' | 'normal';
+type Intent = 'dead_loop' | 'ping_pong' | 'polling' | 'retry_success' | 'retry_fail' | 'normal';
 
 function getMessageText(msg: any): string {
     if (typeof msg.content === 'string') return msg.content;
@@ -14,7 +14,8 @@ function detectIntent(prompt: any[]): Intent {
         if (text.includes('测试死循环')) return 'dead_loop';
         if (text.includes('测试乒乓')) return 'ping_pong';
         if (text.includes('测试轮询')) return 'polling';
-        if (text.includes('测试重试')) return 'retry_error';
+        if (text.includes('测试重试成功')) return 'retry_success';
+        if (text.includes('测试持续失败')) return 'retry_fail';
     }
     return 'normal';
 }
@@ -24,6 +25,7 @@ const RESPONSES: Record<string, string> = {
     greeting: '你好！虽然是模拟的，但流式输出的效果和真实 API 一致 :)',
     name: '你刚才告诉我了呀！我能"记住"是因为代码把对话历史传给了我。',
     intro: '我是通义千问（模拟版），在本地模拟回复，机制和真实 API 完全一致。',
+    retrySuccess: '重试成功！服务已恢复，本次请求正常完成。',
 };
 
 function pickTextResponse(prompt: any[]): string {
@@ -102,6 +104,13 @@ function pollingChunks(prompt: any[]): any[] {
     ];
 }
 
+// Tracks how many times the retry_success scenario has been attempted in the current demo run
+let retrySuccessAttempts = 0;
+
+export function resetRetryCounters(): void {
+    retrySuccessAttempts = 0;
+}
+
 export function createMockModel() {
     return {
         specificationVersion: 'v2' as const,
@@ -111,7 +120,17 @@ export function createMockModel() {
 
         async doGenerate({ prompt }: any) {
             const intent = detectIntent(prompt);
-            if (intent === 'retry_error') throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 });
+            if (intent === 'retry_fail') throw Object.assign(new Error('Service Unavailable'), { statusCode: 503 });
+            if (intent === 'retry_success') {
+                retrySuccessAttempts++;
+                if (retrySuccessAttempts <= 2) throw Object.assign(new Error('Internal Server Error'), { statusCode: 500 });
+                return {
+                    content: [{ type: 'text', text: RESPONSES.retrySuccess }],
+                    finishReason: { unified: 'stop', raw: undefined },
+                    usage: MOCK_USAGE,
+                    warnings: [],
+                };
+            }
             return {
                 content: [{ type: 'text', text: pickTextResponse(prompt) }],
                 finishReason: { unified: 'stop', raw: undefined },
@@ -122,7 +141,12 @@ export function createMockModel() {
 
         async doStream({ prompt }: any) {
             const intent = detectIntent(prompt);
-            if (intent === 'retry_error') throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 });
+            if (intent === 'retry_fail') throw Object.assign(new Error('Service Unavailable'), { statusCode: 503 });
+            if (intent === 'retry_success') {
+                retrySuccessAttempts++;
+                if (retrySuccessAttempts <= 2) throw Object.assign(new Error('Internal Server Error'), { statusCode: 500 });
+                return { stream: createDelayedStream(textChunks(RESPONSES.retrySuccess), 30) };
+            }
             if (intent === 'dead_loop') return { stream: createDelayedStream(deadLoopChunks(), 10) };
             if (intent === 'ping_pong') return { stream: createDelayedStream(pingPongChunks(prompt), 10) };
             if (intent === 'polling') return { stream: createDelayedStream(pollingChunks(prompt), 10) };

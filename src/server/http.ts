@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { ChatAgent } from '../agent/chat-agent.js';
 import { demoTools } from '../tools/index.js';
+import { resetRetryCounters } from '../providers/mock.js';
 
 interface Models {
     mockModel: LanguageModel;
@@ -14,8 +15,10 @@ interface Models {
 
 const DEMO_TRIGGERS: Record<string, string> = {
     generic_repeat: '测试死循环',
-    ping_pong: '测试乒乓',
-    polling: '测试轮询',
+    ping_pong:      '测试乒乓',
+    polling:        '测试轮询',
+    retry_success:  '测试重试成功',
+    retry_fail:     '测试持续失败',
 };
 
 export function runWebServer(agent: ChatAgent, models: Models): void {
@@ -61,16 +64,24 @@ export function runWebServer(agent: ChatAgent, models: Models): void {
     });
 
     app.post('/api/demo', async (c) => {
-        const { scenario, detectLoops } = await c.req.json<{ scenario: string; detectLoops: boolean }>();
+        const { scenario, detectLoops, retryEnabled } = await c.req.json<{
+            scenario: string;
+            detectLoops: boolean;
+            retryEnabled?: boolean;
+        }>();
 
         const trigger = DEMO_TRIGGERS[scenario];
         if (!trigger) return c.json({ error: 'unknown scenario' }, 400);
 
+        resetRetryCounters();
         const demoAgent = new ChatAgent(models.mockModel, demoTools);
 
         return streamSSE(c, async (stream) => {
             try {
-                for await (const event of demoAgent.chat(trigger, { detectLoops })) {
+                for await (const event of demoAgent.chat(trigger, {
+                    detectLoops,
+                    retryEnabled: retryEnabled ?? true,
+                })) {
                     await stream.writeSSE({ data: JSON.stringify(event) });
                 }
             } catch (e) {
