@@ -6,6 +6,12 @@ import { log } from '../../lib/logger.js';
 // LLM 工厂：根据环境变量决定使用真实模型还是 Mock
 // 新增其他 provider（OpenAI、Claude 等）时只改这里
 export function createLLMProvider(): LanguageModel {
+    if (process.env.USE_MOCK === 'true') {
+        log('LLM provider', 'mock (USE_MOCK=true)');
+        console.log('[LLM] USE_MOCK=true, using mock model\n');
+        return createMockModel() as unknown as LanguageModel;
+    }
+
     if (process.env.DASHSCOPE_API_KEY) {
         const modelId = process.env.MODEL_ID!;
         log('LLM provider', `qwen / ${modelId}`);

@@ -1,6 +1,31 @@
 // Mock 模型：在没有 API Key 时模拟流式输出，行为与真实 API 完全一致
 // 这让你在本地开发/学习时不需要消耗 token
 
+// --- 意图检测 ---
+
+type Intent = 'dead_loop' | 'retry_error' | 'normal';
+
+function getMessageText(msg: any): string {
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) return msg.content.map((c: any) => c.text || '').join('');
+    return '';
+}
+
+// 扫描所有用户消息，不能只看最后一条
+// 死循环测试时，后续 step 里用户消息不在末尾（后面跟着 tool-call / tool-result）
+function detectIntent(prompt: any[]): Intent {
+    const userTexts = (prompt || [])
+        .filter((m: any) => m.role === 'user')
+        .map(getMessageText);
+    for (const text of userTexts) {
+        if (text.includes('测试死循环')) return 'dead_loop';
+        if (text.includes('测试重试')) return 'retry_error';
+    }
+    return 'normal';
+}
+
+// --- 普通文本回复 ---
+
 const RESPONSES: Record<string, string> = {
     default: '你好！我是模拟模型。填了 DASHSCOPE_API_KEY 后会自动切换到真实的 Qwen。',
     greeting: '你好！虽然是模拟的，但流式输出的效果和真实 API 一致 :)',
@@ -8,15 +33,16 @@ const RESPONSES: Record<string, string> = {
     intro: '我是通义千问（模拟版），在本地模拟回复，机制和真实 API 完全一致。',
 };
 
-function pickResponse(prompt: any[]): string {
+function pickTextResponse(prompt: any[]): string {
     const userMsgs = (prompt || []).filter((m: any) => m.role === 'user');
-    const last = userMsgs[userMsgs.length - 1];
-    const text = (last?.content || []).map((c: any) => c.text || '').join('').toLowerCase();
+    const text = getMessageText(userMsgs[userMsgs.length - 1]).toLowerCase();
     if (text.includes('介绍你自己') || text.includes('你是谁')) return RESPONSES.intro;
     if (text.includes('你好') || text.includes('hello')) return RESPONSES.greeting;
     if (text.includes('叫什么') || text.includes('记住')) return RESPONSES.name;
     return RESPONSES.default;
 }
+
+// --- Stream 工具函数 ---
 
 const MOCK_USAGE = {
     inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
@@ -40,6 +66,27 @@ function createDelayedStream(chunks: any[], delayMs = 30): ReadableStream {
     });
 }
 
+function textChunks(text: string): any[] {
+    const id = 'text-1';
+    return [
+        { type: 'text-start', id },
+        ...text.split('').map((char) => ({ type: 'text-delta', id, delta: char })),
+        { type: 'text-end', id },
+        { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage: MOCK_USAGE },
+    ];
+}
+
+// 每次调用都返回相同的 tool-call，用于触发死循环检测
+// v2 compat 层接受单个 tool-call chunk，input 是 JSON 字符串
+function deadLoopChunks(): any[] {
+    return [
+        { type: 'tool-call', toolCallId: 'tool-1', toolName: 'get_weather', input: '{"city":"北京"}' },
+        { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: MOCK_USAGE },
+    ];
+}
+
+// --- Mock 模型 ---
+
 export function createMockModel() {
     return {
         specificationVersion: 'v2' as const,
@@ -50,8 +97,12 @@ export function createMockModel() {
         },
 
         async doGenerate({ prompt }: any) {
+            const intent = detectIntent(prompt);
+            if (intent === 'retry_error') {
+                throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 });
+            }
             return {
-                content: [{ type: 'text', text: pickResponse(prompt) }],
+                content: [{ type: 'text', text: pickTextResponse(prompt) }],
                 finishReason: { unified: 'stop', raw: undefined },
                 usage: MOCK_USAGE,
                 warnings: [],
@@ -59,15 +110,17 @@ export function createMockModel() {
         },
 
         async doStream({ prompt }: any) {
-            const text = pickResponse(prompt);
-            const id = 'text-1';
-            const chunks = [
-                { type: 'text-start', id },
-                ...text.split('').map((char: string) => ({ type: 'text-delta', id, delta: char })),
-                { type: 'text-end', id },
-                { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage: MOCK_USAGE },
-            ];
-            return { stream: createDelayedStream(chunks, 30) };
+            const intent = detectIntent(prompt);
+
+            if (intent === 'retry_error') {
+                throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 });
+            }
+
+            if (intent === 'dead_loop') {
+                return { stream: createDelayedStream(deadLoopChunks(), 10) };
+            }
+
+            return { stream: createDelayedStream(textChunks(pickTextResponse(prompt)), 30) };
         },
     };
 }
