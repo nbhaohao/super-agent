@@ -13,6 +13,7 @@
       --muted: #8b949e;
       --blue: #58a6ff;
       --green: #3fb950;
+      --yellow: #d29922;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,13 +28,80 @@
       flex-direction: column;
     }
 
+    /* ── header ── */
     header {
       padding: 10px 16px;
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+
+    .header-title {
       color: var(--blue);
       font-weight: 600;
       font-size: 14px;
-      flex-shrink: 0;
+      flex: 1;
+    }
+
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .toggle-label { user-select: none; }
+
+    /* pill toggle */
+    .toggle {
+      position: relative;
+      width: 36px; height: 20px;
+      cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--border);
+      border-radius: 20px;
+      transition: background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--yellow); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 14px; height: 14px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+      pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    #mock-status {
+      min-width: 28px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .no-real-model { color: var(--muted); font-style: italic; }
+
+    /* ── main layout ── */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── chat pane ── */
+    .chat-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      border-right: 1px solid var(--border);
     }
 
     #messages {
@@ -146,19 +214,158 @@
 
     #send:hover { background: #2ea043; }
     #send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── messages panel ── */
+    .msg-panel {
+      width: 360px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .panel-count {
+      background: var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    #msg-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .msg-entry {
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .msg-entry-header {
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .msg-entry[data-role="user"] .msg-entry-header    { background: #1a2535; color: var(--blue); }
+    .msg-entry[data-role="assistant"] .msg-entry-header { background: #1a2520; color: var(--green); }
+    .msg-entry[data-role="tool"] .msg-entry-header    { background: #1a1a2e; color: #a371f7; }
+
+    .msg-entry-body {
+      padding: 8px 10px;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-all;
+      background: var(--surface);
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .msg-entry.open .msg-entry-body { display: block; }
+
+    .msg-entry-chevron {
+      margin-left: auto;
+      transition: transform 0.15s;
+    }
+    .msg-entry.open .msg-entry-chevron { transform: rotate(90deg); }
+
+    .empty-hint {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      margin-top: 32px;
+    }
   </style>
 </head>
 <body>
-  <header>Super Agent</header>
-  <div id="messages"></div>
-  <footer>
-    <input id="input" type="text" placeholder="输入消息..." autocomplete="off">
-    <button id="send" onclick="send()">发送 ↵</button>
-  </footer>
+  <header>
+    <span class="header-title">Super Agent</span>
+    <div class="toggle-wrap">
+      <span class="toggle-label">Mock</span>
+      <label class="toggle">
+        <input type="checkbox" id="mock-toggle">
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </label>
+      <span id="mock-status"></span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="chat-pane">
+      <div id="messages"></div>
+      <footer>
+        <input id="input" type="text" placeholder="输入消息..." autocomplete="off">
+        <button id="send" onclick="send()">发送 ↵</button>
+      </footer>
+    </div>
+
+    <div class="msg-panel">
+      <div class="panel-header">
+        <span>Conversation History</span>
+        <span class="panel-count" id="msg-count">0</span>
+      </div>
+      <div id="msg-list">
+        <p class="empty-hint">发送第一条消息后<br>这里会显示 messages 数组</p>
+      </div>
+    </div>
+  </div>
 
   <script>
     const $ = id => document.getElementById(id);
 
+    // ── mock toggle ──
+    async function loadConfig() {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+      $('mock-toggle').checked = cfg.useMock;
+      $('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
+      if (!cfg.hasRealModel) {
+        $('mock-toggle').disabled = true;
+        $('mock-toggle').parentElement.title = '未配置 DASHSCOPE_API_KEY，只能使用 Mock';
+      }
+    }
+
+    $('mock-toggle').addEventListener('change', async (e) => {
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mock: e.target.checked }),
+      });
+      const cfg = await res.json();
+      $('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
+    });
+
+    loadConfig();
+
+    // ── chat ──
     $('input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
@@ -173,11 +380,10 @@
       body.className = 'msg-body';
       wrap.append(label, body);
       $('messages').appendChild(wrap);
-      scroll();
+      scrollChat();
       return body;
     }
 
-    // Track the current text node so streaming appends in-place
     let textNode = null;
 
     function ensureText(body) {
@@ -189,15 +395,15 @@
     }
 
     function addBlock(body, cls, text) {
-      textNode = null; // next text goes in a fresh node after this block
+      textNode = null;
       const el = document.createElement('span');
       el.className = cls;
       el.textContent = text;
       body.appendChild(el);
-      scroll();
+      scrollChat();
     }
 
-    function scroll() {
+    function scrollChat() {
       const el = $('messages');
       el.scrollTop = el.scrollHeight;
     }
@@ -248,7 +454,7 @@
               case 'text':
                 cursor.remove();
                 ensureText(body).textContent += event.text;
-                scroll();
+                scrollChat();
                 break;
               case 'tool-call':
                 addBlock(body, 'tool-call',
@@ -262,6 +468,9 @@
                 cursor.remove();
                 ensureText(body).textContent = `⚠ ${event.message}`;
                 break;
+              case 'messages':
+                renderHistory(event.data);
+                break;
             }
           }
         }
@@ -272,6 +481,59 @@
         $('send').disabled = false;
         $('input').focus();
       }
+    }
+
+    // ── messages panel ──
+    function roleLabel(msg) {
+      if (msg.role === 'user') return 'user';
+      if (msg.role === 'assistant') return 'assistant';
+      return 'tool';
+    }
+
+    function msgSummary(msg) {
+      if (typeof msg.content === 'string') return msg.content.slice(0, 80);
+      if (Array.isArray(msg.content)) {
+        const first = msg.content[0];
+        if (first?.type === 'text') return first.text.slice(0, 80);
+        if (first?.type === 'tool-call') return `tool_call: ${first.toolName}(...)`;
+        if (first?.type === 'tool-result') return `tool_result: ${first.toolName}`;
+        return JSON.stringify(first).slice(0, 80);
+      }
+      return '';
+    }
+
+    function renderHistory(msgs) {
+      $('msg-count').textContent = msgs.length;
+      const list = $('msg-list');
+      list.innerHTML = '';
+
+      msgs.forEach((msg, i) => {
+        const role = roleLabel(msg);
+        const entry = document.createElement('div');
+        entry.className = 'msg-entry';
+        entry.dataset.role = role;
+
+        const hdr = document.createElement('div');
+        hdr.className = 'msg-entry-header';
+        hdr.innerHTML = `
+          <span style="opacity:0.5;font-size:10px">#${i}</span>
+          <span>${role}</span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.7;font-weight:400">
+            ${msgSummary(msg)}
+          </span>
+          <span class="msg-entry-chevron">▶</span>`;
+
+        const bdy = document.createElement('div');
+        bdy.className = 'msg-entry-body';
+        bdy.textContent = JSON.stringify(msg, null, 2);
+
+        hdr.addEventListener('click', () => entry.classList.toggle('open'));
+        entry.append(hdr, bdy);
+        list.appendChild(entry);
+      });
+
+      // auto-scroll panel to bottom
+      list.scrollTop = list.scrollHeight;
     }
   </script>
 </body>

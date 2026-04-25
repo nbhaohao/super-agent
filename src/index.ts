@@ -1,9 +1,11 @@
 import 'dotenv/config';
-import { createLLMProvider } from './providers/provider.js';
+import { createMockProvider, createRealProvider } from './providers/provider.js';
 import { tools } from './tools/index.js';
 import { ChatAgent } from './agent/chat-agent.js';
 import { runWebServer } from './server/http.js';
 
-const model = createLLMProvider();
-const agent = new ChatAgent(model, tools);
-runWebServer(agent);
+const mockModel = createMockProvider();
+const realModel = createRealProvider();
+
+const agent = new ChatAgent(realModel ?? mockModel, tools);
+runWebServer(agent, { mockModel, realModel });

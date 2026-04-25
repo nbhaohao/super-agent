@@ -1,5 +1,5 @@
 import { streamText } from 'ai';
-import type { LanguageModel } from 'ai';
+import type { LanguageModel, ModelMessage } from 'ai';
 import { Conversation } from './conversation.js';
 import { agentLoop } from './agent-loop.js';
 import { log } from '../lib/logger.js';
@@ -15,9 +15,17 @@ export class ChatAgent {
     private readonly conversation = new Conversation();
 
     constructor(
-        private readonly model: LanguageModel,
+        private model: LanguageModel,
         private readonly tools: Tools = {},
     ) {}
+
+    setModel(model: LanguageModel): void {
+        this.model = model;
+    }
+
+    getHistory(): readonly ModelMessage[] {
+        return this.conversation.getHistory();
+    }
 
     async *chat(userInput: string) {
         log('chat() turn start', `history: ${this.conversation.getHistory().length} messages, tools: [${Object.keys(this.tools).join(', ')}]`);

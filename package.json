@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "debug": "tsx --inspect-brk src/index.ts",
-    "start": "tsc && node dist/index.js"
+    "start": "tsx src/index.ts",
+    "debug": "tsx --inspect-brk src/index.ts"
   },
   "keywords": [],
   "author": "",
@@ -15,10 +15,10 @@
   "packageManager": "pnpm@10.33.2",
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
-    "@hono/node-server": "^2.0.0",
+    "@hono/node-server": "^1.13.8",
     "ai": "^6.0.168",
     "dotenv": "^17.4.2",
-    "hono": "^4.12.15"
+    "hono": "^4.7.11"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
