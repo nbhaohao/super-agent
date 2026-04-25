@@ -7,23 +7,39 @@ type Tools = NonNullable<Parameters<typeof streamText>[0]['tools']>;
 
 const MAX_STEPS = 15;
 
+export interface AgentOptions {
+    detectLoops?: boolean; // default: true
+}
+
 export type AgentStreamPart =
     | { type: 'text'; text: string }
     | { type: 'tool-call'; toolName: string; input: unknown }
-    | { type: 'tool-result'; toolName: string; output: unknown };
+    | { type: 'tool-result'; toolName: string; output: unknown }
+    | { type: 'stats'; steps: number; toolCalls: number; tokens: number; savedTokens: number; stoppedByDetection: boolean };
 
 export async function* agentLoop(
     model: LanguageModel,
     tools: Tools,
     messages: ModelMessage[],
     system: string,
+    options: AgentOptions = {},
 ): AsyncGenerator<AgentStreamPart> {
-    resetHistory();
+    const doDetect = options.detectLoops !== false;
+    if (doDetect) resetHistory();
+
     let step = 0;
+    let totalToolCalls = 0;
+    let totalTokens = 0;
+    let stoppedByDetection = false;
+    let lastStepTokens = 0;
 
     while (step < MAX_STEPS) {
         step++;
         log(`--- Step ${step} ---`);
+
+        // Simulate token cost: grows as conversation history grows
+        lastStepTokens = 300 + messages.length * 60 + 50;
+        totalTokens += lastStepTokens;
 
         const result = streamText({
             model,
@@ -48,24 +64,27 @@ export async function* agentLoop(
 
                 case 'tool-call': {
                     hasToolCall = true;
+                    totalToolCalls++;
                     lastToolCall = { name: part.toolName, input: part.input };
-
-                    const detection = detect(part.toolName, part.input);
                     yield { type: 'tool-call', toolName: part.toolName, input: part.input };
 
-                    if (detection.stuck) {
-                        yield { type: 'text', text: `\n  ${detection.message}` };
-                        log('loop-detection', detection.message);
-                        if (detection.level === 'critical') {
-                            shouldBreak = true;
-                        } else {
-                            messages.push({
-                                role: 'user' as const,
-                                content: `[系统提醒] ${detection.message}。请换一个思路解决问题，不要重复同样的操作。`,
-                            });
+                    if (doDetect) {
+                        const detection = detect(part.toolName, part.input);
+                        if (detection.stuck) {
+                            yield { type: 'text', text: `\n  ${detection.message}` };
+                            log('loop-detection', detection.message);
+                            if (detection.level === 'critical') {
+                                stoppedByDetection = true;
+                                shouldBreak = true;
+                            } else {
+                                messages.push({
+                                    role: 'user' as const,
+                                    content: `[系统提醒] ${detection.message}。请换一个思路解决问题，不要重复同样的操作。`,
+                                });
+                            }
                         }
+                        recordCall(part.toolName, part.input);
                     }
-                    recordCall(part.toolName, part.input);
                     break;
                 }
 
@@ -100,4 +119,10 @@ export async function* agentLoop(
         log('agent loop', `MAX_STEPS (${MAX_STEPS}) reached, force stopped`);
         yield { type: 'text', text: '\n[达到最大步数限制，强制停止]' };
     }
+
+    const savedTokens = stoppedByDetection
+        ? Math.round((MAX_STEPS - step) * (totalTokens / step))
+        : 0;
+
+    yield { type: 'stats', steps: step, toolCalls: totalToolCalls, tokens: totalTokens, savedTokens, stoppedByDetection };
 }

@@ -1,4 +1,4 @@
-type Intent = 'dead_loop' | 'retry_error' | 'normal';
+type Intent = 'dead_loop' | 'ping_pong' | 'polling' | 'retry_error' | 'normal';
 
 function getMessageText(msg: any): string {
     if (typeof msg.content === 'string') return msg.content;
@@ -12,6 +12,8 @@ function detectIntent(prompt: any[]): Intent {
         .map(getMessageText);
     for (const text of userTexts) {
         if (text.includes('测试死循环')) return 'dead_loop';
+        if (text.includes('测试乒乓')) return 'ping_pong';
+        if (text.includes('测试轮询')) return 'polling';
         if (text.includes('测试重试')) return 'retry_error';
     }
     return 'normal';
@@ -72,6 +74,34 @@ function deadLoopChunks(): any[] {
     ];
 }
 
+function countToolCalls(prompt: any[]): number {
+    let count = 0;
+    for (const msg of prompt) {
+        if (!Array.isArray(msg.content)) continue;
+        for (const part of msg.content) {
+            if (part.type === 'tool-call') count++;
+        }
+    }
+    return count;
+}
+
+function pingPongChunks(prompt: any[]): any[] {
+    const total = countToolCalls(prompt);
+    const city = total % 2 === 0 ? '北京' : '上海';
+    return [
+        { type: 'tool-call', toolCallId: `tool-${total + 1}`, toolName: 'get_weather', input: `{"city":"${city}"}` },
+        { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: MOCK_USAGE },
+    ];
+}
+
+function pollingChunks(prompt: any[]): any[] {
+    const total = countToolCalls(prompt);
+    return [
+        { type: 'tool-call', toolCallId: `tool-${total + 1}`, toolName: 'check_status', input: '{"task_id":"task-001"}' },
+        { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: MOCK_USAGE },
+    ];
+}
+
 export function createMockModel() {
     return {
         specificationVersion: 'v2' as const,
@@ -94,6 +124,8 @@ export function createMockModel() {
             const intent = detectIntent(prompt);
             if (intent === 'retry_error') throw Object.assign(new Error('Rate limit exceeded'), { statusCode: 429 });
             if (intent === 'dead_loop') return { stream: createDelayedStream(deadLoopChunks(), 10) };
+            if (intent === 'ping_pong') return { stream: createDelayedStream(pingPongChunks(prompt), 10) };
+            if (intent === 'polling') return { stream: createDelayedStream(pollingChunks(prompt), 10) };
             return { stream: createDelayedStream(textChunks(pickTextResponse(prompt)), 30) };
         },
     };

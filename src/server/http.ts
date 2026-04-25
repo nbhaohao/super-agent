@@ -4,12 +4,19 @@ import { streamSSE } from 'hono/streaming';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
-import type { ChatAgent } from '../agent/chat-agent.js';
+import { ChatAgent } from '../agent/chat-agent.js';
+import { demoTools } from '../tools/index.js';
 
 interface Models {
     mockModel: LanguageModel;
     realModel: LanguageModel | null;
 }
+
+const DEMO_TRIGGERS: Record<string, string> = {
+    generic_repeat: '测试死循环',
+    ping_pong: '测试乒乓',
+    polling: '测试轮询',
+};
 
 export function runWebServer(agent: ChatAgent, models: Models): void {
     const app = new Hono();
@@ -45,6 +52,27 @@ export function runWebServer(agent: ChatAgent, models: Models): void {
                 await stream.writeSSE({
                     data: JSON.stringify({ type: 'messages', data: agent.getHistory() }),
                 });
+            } catch (e) {
+                await stream.writeSSE({
+                    data: JSON.stringify({ type: 'error', message: String(e) }),
+                });
+            }
+        });
+    });
+
+    app.post('/api/demo', async (c) => {
+        const { scenario, detectLoops } = await c.req.json<{ scenario: string; detectLoops: boolean }>();
+
+        const trigger = DEMO_TRIGGERS[scenario];
+        if (!trigger) return c.json({ error: 'unknown scenario' }, 400);
+
+        const demoAgent = new ChatAgent(models.mockModel, demoTools);
+
+        return streamSSE(c, async (stream) => {
+            try {
+                for await (const event of demoAgent.chat(trigger, { detectLoops })) {
+                    await stream.writeSSE({ data: JSON.stringify(event) });
+                }
             } catch (e) {
                 await stream.writeSSE({
                     data: JSON.stringify({ type: 'error', message: String(e) }),

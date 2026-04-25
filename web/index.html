@@ -14,6 +14,7 @@
       --blue: #58a6ff;
       --green: #3fb950;
       --yellow: #d29922;
+      --red: #f85149;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -25,11 +26,70 @@
       color: var(--text);
       height: 100vh;
       display: flex;
-      flex-direction: column;
+      overflow: hidden;
     }
 
-    /* ── header ── */
-    header {
+    /* ── sidebar ── */
+    .sidebar {
+      width: 148px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 12px 0;
+    }
+
+    .sidebar-logo {
+      padding: 4px 14px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--blue);
+      letter-spacing: 0.3px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      color: var(--muted);
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 0;
+      transition: color 0.15s, background 0.15s;
+      user-select: none;
+      border-left: 2px solid transparent;
+    }
+
+    .nav-item:hover { color: var(--text); background: var(--surface); }
+
+    .nav-item.active {
+      color: var(--text);
+      border-left-color: var(--blue);
+      background: var(--surface);
+    }
+
+    .nav-icon { font-size: 14px; }
+
+    /* ── content area ── */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* ── views ── */
+    .view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .view.active { display: flex; }
+
+    /* ════════════════════════════════
+       VIEW: CHAT
+    ════════════════════════════════ */
+    .chat-header {
       padding: 10px 16px;
       border-bottom: 1px solid var(--border);
       display: flex;
@@ -38,10 +98,10 @@
       flex-shrink: 0;
     }
 
-    .header-title {
-      color: var(--blue);
+    .chat-header-title {
+      font-size: 13px;
       font-weight: 600;
-      font-size: 14px;
+      color: var(--text);
       flex: 1;
     }
 
@@ -53,9 +113,6 @@
       color: var(--muted);
     }
 
-    .toggle-label { user-select: none; }
-
-    /* pill toggle */
     .toggle {
       position: relative;
       width: 36px; height: 20px;
@@ -80,28 +137,20 @@
     }
     .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
 
-    #mock-status {
-      min-width: 28px;
-      color: var(--text);
-      font-weight: 600;
-    }
+    #mock-status { font-size: 12px; font-weight: 600; min-width: 28px; color: var(--text); }
 
-    .no-real-model { color: var(--muted); font-style: italic; }
-
-    /* ── main layout ── */
-    .main {
+    .chat-body {
       flex: 1;
       display: flex;
       overflow: hidden;
     }
 
-    /* ── chat pane ── */
     .chat-pane {
       flex: 1;
       display: flex;
       flex-direction: column;
-      min-width: 0;
       border-right: 1px solid var(--border);
+      min-width: 0;
     }
 
     #messages {
@@ -114,7 +163,6 @@
     }
 
     .msg { display: flex; flex-direction: column; gap: 4px; }
-
     .msg-label {
       font-size: 10px;
       font-weight: 600;
@@ -123,9 +171,7 @@
       color: var(--muted);
       padding: 0 4px;
     }
-
     .msg.user .msg-label { text-align: right; }
-
     .msg-body {
       padding: 8px 12px;
       border-radius: 8px;
@@ -134,50 +180,31 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-
     .msg.user { align-items: flex-end; }
     .msg.user .msg-body { background: #1f6feb; color: #fff; }
-
     .msg.assistant { align-items: flex-start; }
-    .msg.assistant .msg-body {
-      background: var(--surface);
-      border: 1px solid var(--border);
-    }
+    .msg.assistant .msg-body { background: var(--surface); border: 1px solid var(--border); }
 
     .tool-call {
-      display: block;
-      margin-top: 6px;
-      padding: 4px 8px;
-      background: #0c2137;
-      border-left: 3px solid var(--blue);
-      border-radius: 2px;
-      color: var(--blue);
-      font-size: 12px;
+      display: block; margin-top: 6px; padding: 4px 8px;
+      background: #0c2137; border-left: 3px solid var(--blue);
+      border-radius: 2px; color: var(--blue); font-size: 12px;
     }
-
     .tool-result {
-      display: block;
-      margin-top: 2px;
-      padding: 4px 8px;
-      background: #0c2318;
-      border-left: 3px solid var(--green);
-      border-radius: 2px;
-      color: var(--green);
-      font-size: 12px;
+      display: block; margin-top: 2px; padding: 4px 8px;
+      background: #0c2318; border-left: 3px solid var(--green);
+      border-radius: 2px; color: var(--green); font-size: 12px;
     }
 
     .cursor {
-      display: inline-block;
-      width: 6px; height: 13px;
+      display: inline-block; width: 6px; height: 13px;
       background: var(--muted);
       animation: blink 1s step-end infinite;
-      vertical-align: text-bottom;
-      margin-left: 2px;
+      vertical-align: text-bottom; margin-left: 2px;
     }
-
     @keyframes blink { 50% { opacity: 0; } }
 
-    footer {
+    .chat-footer {
       padding: 12px 16px;
       border-top: 1px solid var(--border);
       display: flex;
@@ -197,32 +224,24 @@
       outline: none;
       transition: border-color 0.15s;
     }
-
     #input:focus { border-color: var(--blue); }
 
     #send {
-      background: #238636;
-      border: 1px solid #2ea043;
-      border-radius: 6px;
-      padding: 8px 16px;
-      color: #fff;
-      font-family: inherit;
-      font-size: 13px;
-      cursor: pointer;
+      background: #238636; border: 1px solid #2ea043;
+      border-radius: 6px; padding: 8px 16px; color: #fff;
+      font-family: inherit; font-size: 13px; cursor: pointer;
       transition: background 0.15s;
     }
-
     #send:hover { background: #2ea043; }
     #send:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* ── messages panel ── */
+    /* history panel */
     .msg-panel {
-      width: 360px;
+      width: 320px;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
     }
-
     .panel-header {
       padding: 10px 16px;
       border-bottom: 1px solid var(--border);
@@ -236,137 +255,314 @@
       justify-content: space-between;
       flex-shrink: 0;
     }
-
     .panel-count {
-      background: var(--border);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 1px 7px;
-      font-size: 11px;
-      font-weight: 600;
+      background: var(--border); color: var(--text);
+      border-radius: 10px; padding: 1px 7px;
+      font-size: 11px; font-weight: 600;
     }
-
     #msg-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+      flex: 1; overflow-y: auto; padding: 10px;
+      display: flex; flex-direction: column; gap: 5px;
     }
-
-    .msg-entry {
-      border-radius: 6px;
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
+    .msg-entry { border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
     .msg-entry-header {
-      padding: 4px 10px;
-      font-size: 11px;
-      font-weight: 600;
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+      cursor: pointer; user-select: none;
+    }
+    .msg-entry[data-role="user"]      .msg-entry-header { background: #1a2535; color: var(--blue); }
+    .msg-entry[data-role="assistant"] .msg-entry-header { background: #1a2520; color: var(--green); }
+    .msg-entry[data-role="tool"]      .msg-entry-header { background: #1a1a2e; color: #a371f7; }
+    .msg-entry-body {
+      padding: 8px 10px; font-size: 11px; color: var(--muted);
+      white-space: pre-wrap; word-break: break-all;
+      background: var(--surface); display: none;
+      max-height: 200px; overflow-y: auto;
+    }
+    .msg-entry.open .msg-entry-body { display: block; }
+    .msg-entry-chevron { margin-left: auto; transition: transform 0.15s; }
+    .msg-entry.open .msg-entry-chevron { transform: rotate(90deg); }
+    .empty-hint { color: var(--muted); font-size: 12px; text-align: center; margin-top: 32px; line-height: 1.8; }
+
+    /* ════════════════════════════════
+       VIEW: LOOP DETECTION DEMO
+    ════════════════════════════════ */
+    .demo-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
-      gap: 6px;
-      cursor: pointer;
-      user-select: none;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .demo-header-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .demo-header-sub { font-size: 11px; color: var(--muted); }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: 1fr;
+      gap: 14px;
+      padding: 16px;
+      flex: 1;
+      overflow: hidden;
+      align-items: stretch;
     }
 
-    .msg-entry[data-role="user"] .msg-entry-header    { background: #1a2535; color: var(--blue); }
-    .msg-entry[data-role="assistant"] .msg-entry-header { background: #1a2520; color: var(--green); }
-    .msg-entry[data-role="tool"] .msg-entry-header    { background: #1a1a2e; color: #a371f7; }
-
-    .msg-entry-body {
-      padding: 8px 10px;
-      font-size: 11px;
-      color: var(--muted);
-      white-space: pre-wrap;
-      word-break: break-all;
+    .card {
       background: var(--surface);
-      display: none;
-      max-height: 200px;
-      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+    .card-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+    .card-title { font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+    .card-desc { font-size: 11px; color: var(--muted); line-height: 1.6; }
 
-    .msg-entry.open .msg-entry-body { display: block; }
-
-    .msg-entry-chevron {
-      margin-left: auto;
-      transition: transform 0.15s;
+    .card-controls {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
     }
-    .msg-entry.open .msg-entry-chevron { transform: rotate(90deg); }
-
-    .empty-hint {
-      color: var(--muted);
-      font-size: 12px;
-      text-align: center;
-      margin-top: 32px;
+    .card-toggle-wrap {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; color: var(--muted); flex: 1;
     }
+    .card-toggle {
+      position: relative; width: 30px; height: 17px; cursor: pointer;
+    }
+    .card-toggle input { opacity: 0; width: 0; height: 0; }
+    .card-toggle .toggle-track { border-radius: 17px; }
+    .card-toggle input:checked + .toggle-track { background: var(--green); }
+    .card-toggle .toggle-thumb {
+      position: absolute; top: 2px; left: 2px;
+      width: 13px; height: 13px; background: #fff; border-radius: 50%;
+      transition: transform 0.2s; pointer-events: none;
+    }
+    .card-toggle input:checked ~ .toggle-thumb { transform: translateX(13px); }
+
+    .detect-status { font-size: 11px; font-weight: 600; min-width: 22px; }
+    .detect-on  { color: var(--green); }
+    .detect-off { color: var(--red); }
+
+    .run-btn {
+      background: #238636; border: 1px solid #2ea043;
+      border-radius: 5px; padding: 4px 12px; color: #fff;
+      font-family: inherit; font-size: 12px; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .run-btn:hover { background: #2ea043; }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .card-log {
+      flex: 1; overflow-y: auto; padding: 8px 10px;
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .log-empty { color: var(--muted); font-size: 11px; margin: auto; text-align: center; line-height: 1.8; }
+
+    .card-msg { display: flex; flex-direction: column; gap: 2px; }
+    .card-msg-label {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+      text-transform: uppercase; color: var(--muted); padding: 0 3px;
+    }
+    .card-msg-body {
+      padding: 5px 9px; border-radius: 6px; font-size: 11px; line-height: 1.5;
+    }
+    .card-msg.tool-call  .card-msg-body { background: #0c2137; border-left: 3px solid var(--blue);   color: var(--blue); }
+    .card-msg.tool-result .card-msg-body { background: #0c2318; border-left: 3px solid var(--green);  color: var(--green); }
+    .card-msg.detect-warn .card-msg-body { background: #1f1a0e; border-left: 3px solid var(--yellow); color: var(--yellow); }
+    .card-msg.detect-stop .card-msg-body { background: #1f0e0e; border-left: 3px solid var(--red);    color: var(--red); font-weight: 600; }
+    .card-msg-args { opacity: 0.75; }
+
+    .card-stats {
+      padding: 7px 12px; border-top: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 4px;
+      font-size: 11px; flex-shrink: 0;
+    }
+    .stat-banner {
+      text-align: center; padding: 3px 8px;
+      border-radius: 4px; font-weight: 600; font-size: 11px;
+    }
+    .stat-banner.detected { background: #0c2318; color: var(--green); }
+    .stat-banner.maxsteps { background: #2d1b1b; color: var(--red); }
+    .stat-banner.idle     { color: var(--muted); font-weight: 400; text-align: center; }
+    .stat-row {
+      display: flex; gap: 14px; color: var(--muted); flex-wrap: wrap;
+    }
+    .stat-chip { display: flex; gap: 4px; }
+    .stat-label { }
+    .stat-value { font-weight: 600; color: var(--text); }
+    .stat-saved { font-weight: 600; color: var(--green); }
+    .stat-full  { font-weight: 600; color: var(--red); }
   </style>
 </head>
 <body>
-  <header>
-    <span class="header-title">Super Agent</span>
-    <div class="toggle-wrap">
-      <span class="toggle-label">Mock</span>
-      <label class="toggle">
-        <input type="checkbox" id="mock-toggle">
-        <span class="toggle-track"></span>
-        <span class="toggle-thumb"></span>
-      </label>
-      <span id="mock-status"></span>
-    </div>
-  </header>
 
-  <div class="main">
-    <div class="chat-pane">
-      <div id="messages"></div>
-      <footer>
-        <input id="input" type="text" placeholder="输入消息..." autocomplete="off">
-        <button id="send" onclick="send()">发送 ↵</button>
-      </footer>
+  <!-- ── Sidebar ── -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">Super Agent</div>
+    <div class="nav-item active" data-view="chat" onclick="switchView('chat', this)">
+      <span class="nav-icon">💬</span> Agent Loop
+    </div>
+    <div class="nav-item" data-view="demo" onclick="switchView('demo', this)">
+      <span class="nav-icon">🔁</span> 循环检测
+    </div>
+  </nav>
+
+  <!-- ── Content ── -->
+  <div class="content">
+
+    <!-- ═══════════ VIEW: CHAT ═══════════ -->
+    <div class="view active" id="view-chat">
+      <div class="chat-header">
+        <span class="chat-header-title">Agent Loop</span>
+        <div class="toggle-wrap">
+          <span>Mock</span>
+          <label class="toggle">
+            <input type="checkbox" id="mock-toggle">
+            <span class="toggle-track"></span>
+            <span class="toggle-thumb"></span>
+          </label>
+          <span id="mock-status"></span>
+        </div>
+      </div>
+
+      <div class="chat-body">
+        <div class="chat-pane">
+          <div id="messages"></div>
+          <div class="chat-footer">
+            <input id="input" type="text" placeholder="输入消息..." autocomplete="off">
+            <button id="send" onclick="send()">发送 ↵</button>
+          </div>
+        </div>
+
+        <div class="msg-panel">
+          <div class="panel-header">
+            <span>Conversation History</span>
+            <span class="panel-count" id="msg-count">0</span>
+          </div>
+          <div id="msg-list">
+            <p class="empty-hint">发送第一条消息后<br>这里会显示 messages 数组</p>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="msg-panel">
-      <div class="panel-header">
-        <span>Conversation History</span>
-        <span class="panel-count" id="msg-count">0</span>
+    <!-- ═══════════ VIEW: DEMO ═══════════ -->
+    <div class="view" id="view-demo">
+      <div class="demo-header">
+        <span class="demo-header-title">循环检测</span>
+        <span class="demo-header-sub">对比开关循环检测的区别 · 基于 Mock 模型</span>
       </div>
-      <div id="msg-list">
-        <p class="empty-hint">发送第一条消息后<br>这里会显示 messages 数组</p>
+
+      <div class="cards">
+        <!-- Card 1 -->
+        <div class="card" id="card-generic_repeat">
+          <div class="card-head">
+            <div class="card-title">通用重复</div>
+            <div class="card-desc">同一个工具、同样的参数、同样的结果，被反复调用。<br>模型陷入"我需要知道北京天气 → 查一下 → 我需要知道北京天气"的死循环。</div>
+          </div>
+          <div class="card-controls">
+            <div class="card-toggle-wrap">
+              <span>循环检测</span>
+              <label class="card-toggle">
+                <input type="checkbox" checked onchange="updateDetectLabel(this)">
+                <span class="toggle-track"></span>
+                <span class="toggle-thumb"></span>
+              </label>
+              <span class="detect-status detect-on">ON</span>
+            </div>
+            <button class="run-btn" onclick="runScenario('generic_repeat', this)">▶ 运行</button>
+          </div>
+          <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="card" id="card-ping_pong">
+          <div class="card-head">
+            <div class="card-title">乒乓循环</div>
+            <div class="card-desc">两个操作来回交替：北京天气 → 上海天气 → 北京天气 → …<br>每步看起来都在"做事"，但整体没有进展。</div>
+          </div>
+          <div class="card-controls">
+            <div class="card-toggle-wrap">
+              <span>循环检测</span>
+              <label class="card-toggle">
+                <input type="checkbox" checked onchange="updateDetectLabel(this)">
+                <span class="toggle-track"></span>
+                <span class="toggle-thumb"></span>
+              </label>
+              <span class="detect-status detect-on">ON</span>
+            </div>
+            <button class="run-btn" onclick="runScenario('ping_pong', this)">▶ 运行</button>
+          </div>
+          <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="card" id="card-polling">
+          <div class="card-head">
+            <div class="card-title">轮询无进展</div>
+            <div class="card-desc">不断 poll 检查任务状态，结果一直是 "running"。<br>模型不断重试，永远等不到 "done"。</div>
+          </div>
+          <div class="card-controls">
+            <div class="card-toggle-wrap">
+              <span>循环检测</span>
+              <label class="card-toggle">
+                <input type="checkbox" checked onchange="updateDetectLabel(this)">
+                <span class="toggle-track"></span>
+                <span class="toggle-thumb"></span>
+              </label>
+              <span class="detect-status detect-on">ON</span>
+            </div>
+            <button class="run-btn" onclick="runScenario('polling', this)">▶ 运行</button>
+          </div>
+          <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
       </div>
     </div>
-  </div>
+
+  </div><!-- /content -->
 
   <script>
-    const $ = id => document.getElementById(id);
+    // ── Navigation ──
+    function switchView(name, el) {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('view-' + name).classList.add('active');
+    }
 
-    // ── mock toggle ──
+    // ── Mock toggle ──
     async function loadConfig() {
       const res = await fetch('/api/config');
       const cfg = await res.json();
-      $('mock-toggle').checked = cfg.useMock;
-      $('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
+      document.getElementById('mock-toggle').checked = cfg.useMock;
+      document.getElementById('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
       if (!cfg.hasRealModel) {
-        $('mock-toggle').disabled = true;
-        $('mock-toggle').parentElement.title = '未配置 DASHSCOPE_API_KEY，只能使用 Mock';
+        document.getElementById('mock-toggle').disabled = true;
+        document.getElementById('mock-toggle').parentElement.title = '未配置 DASHSCOPE_API_KEY，只能使用 Mock';
       }
     }
 
-    $('mock-toggle').addEventListener('change', async (e) => {
+    document.getElementById('mock-toggle').addEventListener('change', async (e) => {
       const res = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mock: e.target.checked }),
       });
       const cfg = await res.json();
-      $('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
+      document.getElementById('mock-status').textContent = cfg.useMock ? 'ON' : 'OFF';
     });
 
     loadConfig();
 
-    // ── chat ──
-    $('input').addEventListener('keydown', e => {
+    // ── Chat ──
+    document.getElementById('input').addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
 
@@ -379,7 +575,7 @@
       const body = document.createElement('div');
       body.className = 'msg-body';
       wrap.append(label, body);
-      $('messages').appendChild(wrap);
+      document.getElementById('messages').appendChild(wrap);
       scrollChat();
       return body;
     }
@@ -387,36 +583,33 @@
     let textNode = null;
 
     function ensureText(body) {
-      if (!textNode) {
-        textNode = document.createTextNode('');
-        body.appendChild(textNode);
-      }
+      if (!textNode) { textNode = document.createTextNode(''); body.appendChild(textNode); }
       return textNode;
     }
 
     function addBlock(body, cls, text) {
       textNode = null;
       const el = document.createElement('span');
-      el.className = cls;
-      el.textContent = text;
+      el.className = cls; el.textContent = text;
       body.appendChild(el);
       scrollChat();
     }
 
     function scrollChat() {
-      const el = $('messages');
+      const el = document.getElementById('messages');
       el.scrollTop = el.scrollHeight;
     }
 
     async function send() {
-      const msg = $('input').value.trim();
-      if (!msg || $('send').disabled) return;
+      const input = document.getElementById('input');
+      const sendBtn = document.getElementById('send');
+      const msg = input.value.trim();
+      if (!msg || sendBtn.disabled) return;
 
-      $('input').value = '';
-      $('send').disabled = true;
+      input.value = '';
+      sendBtn.disabled = true;
 
-      const userBody = addMsg('user');
-      userBody.textContent = msg;
+      addMsg('user').textContent = msg;
 
       const body = addMsg('assistant');
       const cursor = document.createElement('span');
@@ -430,7 +623,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: msg }),
         });
-
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const reader = res.body.getReader();
@@ -440,7 +632,6 @@
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           buf += dec.decode(value, { stream: true });
           const lines = buf.split('\n');
           buf = lines.pop() ?? '';
@@ -457,12 +648,10 @@
                 scrollChat();
                 break;
               case 'tool-call':
-                addBlock(body, 'tool-call',
-                  `🔧 ${event.toolName}(${JSON.stringify(event.input)})`);
+                addBlock(body, 'tool-call', `🔧 ${event.toolName}(${JSON.stringify(event.input)})`);
                 break;
               case 'tool-result':
-                addBlock(body, 'tool-result',
-                  `✓ ${JSON.stringify(event.output)}`);
+                addBlock(body, 'tool-result', `✓ ${JSON.stringify(event.output)}`);
                 break;
               case 'error':
                 cursor.remove();
@@ -478,12 +667,12 @@
         body.textContent = `⚠ ${e.message}`;
       } finally {
         cursor.remove();
-        $('send').disabled = false;
-        $('input').focus();
+        sendBtn.disabled = false;
+        input.focus();
       }
     }
 
-    // ── messages panel ──
+    // ── History panel ──
     function roleLabel(msg) {
       if (msg.role === 'user') return 'user';
       if (msg.role === 'assistant') return 'assistant';
@@ -503,37 +692,168 @@
     }
 
     function renderHistory(msgs) {
-      $('msg-count').textContent = msgs.length;
-      const list = $('msg-list');
+      document.getElementById('msg-count').textContent = msgs.length;
+      const list = document.getElementById('msg-list');
       list.innerHTML = '';
-
       msgs.forEach((msg, i) => {
         const role = roleLabel(msg);
         const entry = document.createElement('div');
         entry.className = 'msg-entry';
         entry.dataset.role = role;
-
         const hdr = document.createElement('div');
         hdr.className = 'msg-entry-header';
         hdr.innerHTML = `
           <span style="opacity:0.5;font-size:10px">#${i}</span>
           <span>${role}</span>
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.7;font-weight:400">
-            ${msgSummary(msg)}
-          </span>
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.7;font-weight:400">${msgSummary(msg)}</span>
           <span class="msg-entry-chevron">▶</span>`;
-
         const bdy = document.createElement('div');
         bdy.className = 'msg-entry-body';
         bdy.textContent = JSON.stringify(msg, null, 2);
-
         hdr.addEventListener('click', () => entry.classList.toggle('open'));
         entry.append(hdr, bdy);
         list.appendChild(entry);
       });
-
-      // auto-scroll panel to bottom
       list.scrollTop = list.scrollHeight;
+    }
+
+    // ── Loop Detection Demo ──
+    function updateDetectLabel(checkbox) {
+      const wrap = checkbox.closest('.card-toggle-wrap');
+      const span = wrap.querySelector('.detect-status');
+      span.textContent = checkbox.checked ? 'ON' : 'OFF';
+      span.className = 'detect-status ' + (checkbox.checked ? 'detect-on' : 'detect-off');
+    }
+
+    function getCardEls(scenario) {
+      const card = document.getElementById('card-' + scenario);
+      return {
+        log: card.querySelector('.card-log'),
+        stats: card.querySelector('.card-stats'),
+        btn: card.querySelector('.run-btn'),
+        toggle: card.querySelector('input[type=checkbox]'),
+      };
+    }
+
+    function clearHint(logEl) {
+      const hint = logEl.querySelector('.log-empty');
+      if (hint) hint.remove();
+    }
+
+    function appendCardMsg(logEl, type, labelText, bodyHtml) {
+      clearHint(logEl);
+      const msg = document.createElement('div');
+      msg.className = `card-msg ${type}`;
+      msg.innerHTML = `<div class="card-msg-label">${labelText}</div><div class="card-msg-body">${bodyHtml}</div>`;
+      logEl.appendChild(msg);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function formatArgs(input) {
+      if (input && typeof input === 'object') {
+        return Object.entries(input)
+          .map(([k, v]) => `<span class="card-msg-args">${k}:</span> ${JSON.stringify(v)}`)
+          .join('  ');
+      }
+      return JSON.stringify(input);
+    }
+
+    function formatOutput(output) {
+      if (typeof output === 'string') return output;
+      if (output && typeof output === 'object') {
+        return Object.entries(output).map(([k, v]) => `${v}`).join(' · ');
+      }
+      return JSON.stringify(output);
+    }
+
+    function renderStats(statsEl, data) {
+      const { steps, toolCalls, tokens, savedTokens, stoppedByDetection } = data;
+      const maxSteps = 15;
+      const hitMax = steps >= maxSteps;
+      const bannerClass = stoppedByDetection ? 'detected' : (hitMax ? 'maxsteps' : 'idle');
+      const bannerText = stoppedByDetection
+        ? `✓ 循环检测触发，第 ${steps} 步停止`
+        : hitMax ? `✗ 跑满 ${maxSteps} 步仍未停止`
+        : `✓ 第 ${steps} 步正常完成`;
+      const fmt = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n;
+      const savePct = tokens + savedTokens > 0 ? Math.round(savedTokens / (tokens + savedTokens) * 100) : 0;
+      const tokensClass = hitMax && !stoppedByDetection ? 'stat-full' : 'stat-value';
+      statsEl.innerHTML = `
+        <div class="stat-banner ${bannerClass}">${bannerText}</div>
+        <div class="stat-row">
+          <span class="stat-chip"><span class="stat-label">Steps</span><span class="stat-value">${steps}/${maxSteps}</span></span>
+          <span class="stat-chip"><span class="stat-label">Calls</span><span class="stat-value">${toolCalls}</span></span>
+          <span class="stat-chip"><span class="stat-label">Tokens</span><span class="${tokensClass}">${fmt(tokens)}</span></span>
+          ${stoppedByDetection ? `<span class="stat-chip"><span class="stat-label">节省</span><span class="stat-saved">~${fmt(savedTokens)} (${savePct}%)</span></span>` : ''}
+        </div>`;
+    }
+
+    async function runScenario(scenario, btn) {
+      const { log, stats, toggle } = getCardEls(scenario);
+      const detectLoops = toggle.checked;
+      btn.disabled = true;
+      log.innerHTML = '';
+      stats.innerHTML = '<div class="stat-banner idle">运行中…</div>';
+      let stepCount = 0;
+      try {
+        const res = await fetch('/api/demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario, detectLoops }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+            switch (event.type) {
+              case 'tool-call':
+                stepCount++;
+                appendCardMsg(log, 'tool-call',
+                  `#${stepCount} &nbsp;assistant`,
+                  `🔧 <strong>${event.toolName}</strong><br>${formatArgs(event.input)}`);
+                break;
+              case 'tool-result':
+                appendCardMsg(log, 'tool-result',
+                  `tool &nbsp;·&nbsp; ${event.toolName}`,
+                  formatOutput(event.output));
+                break;
+              case 'text':
+                if (event.text.trim()) {
+                  const isStop = event.text.includes('熔断') || event.text.includes('强制停止') || event.text.includes('已停止');
+                  const isWarn = event.text.includes('警告');
+                  if (isStop || isWarn) {
+                    appendCardMsg(log, isStop ? 'detect-stop' : 'detect-warn', 'loop-detection', event.text.trim());
+                  }
+                }
+                break;
+              case 'stats':
+                renderStats(stats, event);
+                break;
+              case 'error':
+                appendCardMsg(log, 'detect-stop', 'error', `⚠ ${event.message}`);
+                break;
+            }
+          }
+        }
+      } catch (e) {
+        appendLog(log, 'log-stop', '', `⚠ ${e.message}`);
+      } finally {
+        btn.disabled = false;
+      }
     }
   </script>
 </body>
