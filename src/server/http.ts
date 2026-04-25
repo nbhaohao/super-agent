@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LanguageModel } from 'ai';
 import { ChatAgent } from '../agent/chat-agent.js';
-import { ToolRegistry } from '../tools/registry.js';
+import { ToolRegistry, truncateResult, type ToolDefinition } from '../tools/registry.js';
 import { demoToolDefs } from '../tools/index.js';
 import { resetRetryCounters } from '../providers/mock.js';
 
@@ -21,6 +21,24 @@ const DEMO_TRIGGERS: Record<string, string> = {
     retry_success:  '测试重试成功',
     retry_fail:     '测试持续失败',
 };
+
+function generateSampleData(): string {
+    const records = Array.from({ length: 30 }, (_, i) => ({
+        id: i + 1,
+        username: `user_${String(i + 1).padStart(3, '0')}`,
+        email: `user${i + 1}@example.com`,
+        role: ['admin', 'editor', 'viewer'][i % 3],
+        createdAt: `2024-${String((i % 12) + 1).padStart(2, '0')}-01T00:00:00Z`,
+        lastLogin: `2025-0${(i % 9) + 1}-15T12:30:00Z`,
+        profile: {
+            bio: `这是 user_${String(i + 1).padStart(3, '0')} 的个人简介，包含该用户的基本描述信息与偏好设置。`,
+            location: ['北京', '上海', '深圳', '杭州', '成都'][i % 5],
+            score: ((i + 1) * 37) % 1000,
+            tags: [`tag_${i % 8}`, `tag_${(i + 3) % 8}`],
+        },
+    }));
+    return JSON.stringify({ status: 'ok', total: records.length, records }, null, 2);
+}
 
 export function runWebServer(agent: ChatAgent, models: Models): void {
     const app = new Hono();
@@ -92,6 +110,96 @@ export function runWebServer(agent: ChatAgent, models: Models): void {
                     data: JSON.stringify({ type: 'error', message: String(e) }),
                 });
             }
+        });
+    });
+
+    app.post('/api/truncation-demo', async (c) => {
+        const { maxChars } = await c.req.json<{ maxChars?: number }>();
+        const limit = maxChars ?? 1000;
+        const original = generateSampleData();
+        const result = truncateResult(original, limit);
+        return c.json({
+            originalLength: original.length,
+            resultLength: result.length,
+            dropped: Math.max(0, original.length - result.length),
+            wasTruncated: result !== original,
+            original,
+            result,
+        });
+    });
+
+    app.post('/api/lock-demo', async (c) => {
+        // unsafe = isConcurrencySafe:true  → no exclusive lock → race condition on shared state
+        // safe   = isConcurrencySafe:false → exclusive lock    → serialised, correct result
+        const { scenario } = await c.req.json<{ scenario: 'unsafe' | 'safe' }>();
+
+        return streamSSE(c, async (stream) => {
+            const startTime = Date.now();
+            const markedSafe = scenario === 'unsafe'; // "unsafe" wrongly marks the tool as concurrency-safe
+
+            let fileContent = '';
+
+            const demoRegistry = new ToolRegistry();
+
+            const makeWriteTool = (toolName: string, line: string): ToolDefinition => ({
+                name: toolName,
+                description: `Write tool ${toolName}`,
+                parameters: { type: 'object', properties: {}, additionalProperties: false },
+                isConcurrencySafe: markedSafe,
+                isReadOnly: false,
+                execute: async () => {
+                    // --- read phase ---
+                    const snapshot = fileContent;
+                    stream.writeSSE({ data: JSON.stringify({
+                        type: 'op', toolName, op: 'read',
+                        content: snapshot || '(empty)',
+                        elapsed: Date.now() - startTime,
+                    }) }).catch(() => {});
+
+                    // simulate processing delay (race window)
+                    await new Promise(r => setTimeout(r, 300));
+
+                    // --- write phase: based on snapshot, not current content ---
+                    fileContent = snapshot === '' ? line : `${snapshot}\n${line}`;
+                    stream.writeSSE({ data: JSON.stringify({
+                        type: 'op', toolName, op: 'write',
+                        content: fileContent,
+                        elapsed: Date.now() - startTime,
+                    }) }).catch(() => {});
+
+                    return fileContent;
+                },
+            });
+
+            demoRegistry.register(
+                makeWriteTool('write_A', 'line_a'),
+                makeWriteTool('write_B', 'line_b'),
+            );
+
+            demoRegistry.setLockEventHandler((evt) => {
+                stream.writeSSE({ data: JSON.stringify({
+                    type: 'lock-event',
+                    toolName: evt.toolName,
+                    event: evt.type,
+                    elapsed: Date.now() - startTime,
+                }) }).catch(() => {});
+            });
+
+            const tools = demoRegistry.toAISDKFormat();
+
+            await Promise.all([
+                tools['write_A'].execute({}),
+                tools['write_B'].execute({}),
+            ]);
+
+            const isCorrect = fileContent.includes('line_a') && fileContent.includes('line_b');
+
+            await stream.writeSSE({ data: JSON.stringify({
+                type: 'done',
+                elapsed: Date.now() - startTime,
+                finalContent: fileContent,
+                isCorrect,
+            }) });
         });
     });
 

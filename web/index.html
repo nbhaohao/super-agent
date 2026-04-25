@@ -399,6 +399,49 @@
     .stat-value { font-weight: 600; color: var(--text); }
     .stat-saved { font-weight: 600; color: var(--green); }
     .stat-full  { font-weight: 600; color: var(--red); }
+
+    /* ── 2-column card grid ── */
+    .cards-2 { grid-template-columns: repeat(2, 1fr); }
+
+    /* ════════════════════════════════
+       VIEW: TRUNCATION
+    ════════════════════════════════ */
+    .trunc-controls {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 14px;
+      flex-shrink: 0; flex-wrap: wrap;
+      font-size: 12px; color: var(--muted);
+    }
+    .trunc-controls input[type=range] { accent-color: var(--blue); width: 160px; }
+    #trunc-val { font-weight: 600; color: var(--text); min-width: 40px; }
+    #trunc-stats { font-size: 11px; color: var(--muted); margin-left: auto; }
+
+    .text-pre {
+      flex: 1; overflow: auto; padding: 10px;
+      font-family: inherit; font-size: 11px;
+      color: var(--muted); line-height: 1.5;
+      white-space: pre; word-break: normal;
+    }
+
+    /* ════════════════════════════════
+       VIEW: LOCK DEMO
+    ════════════════════════════════ */
+    .lock-row {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 11px; padding: 3px 0;
+    }
+    .lock-elapsed { min-width: 56px; font-size: 10px; color: var(--muted); }
+    .lock-tool    { min-width: 56px; font-weight: 600; color: var(--text); }
+    .lock-badge {
+      padding: 1px 7px; border-radius: 4px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.4px;
+    }
+    .lock-wait     { background: #1f1a0e; color: var(--yellow); }
+    .lock-acquire  { background: #0c2318; color: var(--green); }
+    .lock-release  { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+    .lock-read     { background: #0c2137; color: var(--blue); }
+    .lock-write-op { background: #1f1209; color: #e8a042; }
   </style>
 </head>
 <body>
@@ -414,6 +457,12 @@
     </div>
     <div class="nav-item" data-view="retry" onclick="switchView('retry', this)">
       <span class="nav-icon">🛡️</span> API 容错
+    </div>
+    <div class="nav-item" data-view="truncation" onclick="switchView('truncation', this)">
+      <span class="nav-icon">✂️</span> 结构截断
+    </div>
+    <div class="nav-item" data-view="lock" onclick="switchView('lock', this)">
+      <span class="nav-icon">🔒</span> 并发控制
     </div>
   </nav>
 
@@ -582,6 +631,72 @@
           </div>
           <div class="card-log"><p class="log-empty">点击「运行」开始模拟</p></div>
           <div class="card-stats"><div class="stat-banner idle">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ VIEW: TRUNCATION ═══════════ -->
+    <div class="view" id="view-truncation">
+      <div class="demo-header">
+        <span class="demo-header-title">结构截断</span>
+        <span class="demo-header-sub">对比开启 / 关闭 truncateResult 的效果 · 超长工具返回自动裁剪</span>
+      </div>
+      <div class="trunc-controls">
+        <span>maxChars</span>
+        <input type="range" id="trunc-slider" min="200" max="6000" step="100" value="1000"
+               oninput="document.getElementById('trunc-val').textContent=this.value">
+        <span id="trunc-val">1000</span>
+        <button class="run-btn" onclick="runTruncDemo()">▶ 运行</button>
+        <span id="trunc-stats"></span>
+      </div>
+      <div class="cards cards-2" style="overflow:hidden">
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">原始结果（不截断）</div>
+            <div class="card-desc">工具 execute() 的完整返回值，未经过任何字符限制。</div>
+          </div>
+          <div class="text-pre" id="trunc-original"><span style="color:var(--muted)">点击「运行」查看对比</span></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title">截断后（truncateResult ON）</div>
+            <div class="card-desc" id="trunc-desc">超出 maxChars 的部分会被省略，保留头部 60% + 尾部 40%。</div>
+          </div>
+          <div class="text-pre" id="trunc-result"><span style="color:var(--muted)">点击「运行」查看对比</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ VIEW: LOCK DEMO ═══════════ -->
+    <div class="view" id="view-lock">
+      <div class="demo-header">
+        <span class="demo-header-title">并发控制</span>
+        <span class="demo-header-sub">两个工具同时对同一份「文件」执行读-改-写 · 对比有无互斥锁的结果差异</span>
+      </div>
+      <div class="cards cards-2">
+        <!-- Card: unsafe -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" style="color:var(--red)">无锁保护（isConcurrencySafe: true）</div>
+            <div class="card-desc">两个工具被错误标记为「可并发」，同时读取文件，各自基于旧快照写回 — 后者直接覆盖前者，数据丢失。</div>
+          </div>
+          <div class="card-controls">
+            <button class="run-btn" onclick="runLockDemo('unsafe', this)">▶ 运行</button>
+          </div>
+          <div class="card-log" id="lock-log-unsafe"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats" id="lock-stats-unsafe"><div class="stat-banner idle">—</div></div>
+        </div>
+        <!-- Card: safe -->
+        <div class="card">
+          <div class="card-head">
+            <div class="card-title" style="color:var(--green)">互斥锁保护（isConcurrencySafe: false）</div>
+            <div class="card-desc">两个工具正确标记为「非并发安全」，第二个等待第一个释放锁后再执行，读到最新内容，数据完整。</div>
+          </div>
+          <div class="card-controls">
+            <button class="run-btn" onclick="runLockDemo('safe', this)">▶ 运行</button>
+          </div>
+          <div class="card-log" id="lock-log-safe"><p class="log-empty">点击「运行」开始模拟</p></div>
+          <div class="card-stats" id="lock-stats-safe"><div class="stat-banner idle">—</div></div>
         </div>
       </div>
     </div>
@@ -976,6 +1091,122 @@
       } catch (e) {
         appendCardMsg(log, 'retry-fail', '✗ error', e.message);
         renderRetryStats(stats, { retryCount, succeeded: false, retryEnabled });
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Truncation Demo ──
+    function escapeHtml(text) {
+      return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function highlightTruncation(text) {
+      return escapeHtml(text).replace(
+        /\.\.\. \[省略 \d+ 字符\] \.\.\./g,
+        '<span style="background:#2d1b1b;color:#f85149;padding:0 4px;border-radius:3px;font-weight:600">$&</span>'
+      );
+    }
+
+    async function runTruncDemo() {
+      const maxChars = parseInt(document.getElementById('trunc-slider').value);
+      const statsEl   = document.getElementById('trunc-stats');
+      const origEl    = document.getElementById('trunc-original');
+      const resultEl  = document.getElementById('trunc-result');
+      const descEl    = document.getElementById('trunc-desc');
+      statsEl.textContent = '加载中…';
+      try {
+        const res = await fetch('/api/truncation-demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ maxChars }),
+        });
+        const d = await res.json();
+        const savePct = d.dropped > 0 ? Math.round(d.dropped / d.originalLength * 100) : 0;
+        statsEl.textContent = d.wasTruncated
+          ? `原始 ${d.originalLength} 字符 → 截断后 ${d.resultLength} 字符（省略 ${d.dropped}，节省 ${savePct}%）`
+          : `原始 ${d.originalLength} 字符 ≤ maxChars (${maxChars})，无需截断`;
+        origEl.innerHTML = escapeHtml(d.original);
+        resultEl.innerHTML = d.wasTruncated ? highlightTruncation(d.result) : escapeHtml(d.result);
+        descEl.textContent = d.wasTruncated
+          ? `超出 ${maxChars} 字符，省略中间 ${d.dropped} 个字符，保留头部 60% + 尾部 40%。`
+          : `文本长度 ${d.originalLength} 字符 ≤ maxChars (${maxChars})，内容完整返回，无截断。`;
+      } catch (e) {
+        statsEl.textContent = `错误: ${e.message}`;
+      }
+    }
+
+    // ── Lock Demo ──
+    function appendLockRow(logEl, toolName, eventType, elapsed) {
+      clearHint(logEl);
+      const row = document.createElement('div');
+      row.className = 'lock-row';
+      const badgeClass = eventType === 'wait' ? 'lock-wait' : eventType === 'acquire' ? 'lock-acquire' : 'lock-release';
+      row.innerHTML = `<span class="lock-elapsed">+${elapsed}ms</span><span class="lock-tool">${toolName}</span><span class="lock-badge ${badgeClass}">${eventType}</span>`;
+      logEl.appendChild(row);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function appendLockOp(logEl, toolName, op, content, elapsed) {
+      clearHint(logEl);
+      const row = document.createElement('div');
+      row.className = 'lock-row';
+      const badgeClass = op === 'read' ? 'lock-read' : 'lock-write-op';
+      const snippet = content.length > 24 ? content.slice(0, 24) + '…' : content;
+      row.innerHTML = `<span class="lock-elapsed">+${elapsed}ms</span><span class="lock-tool">${toolName}</span><span class="lock-badge ${badgeClass}">${op}</span><span style="color:var(--muted);font-size:10px;margin-left:4px">"${escapeHtml(snippet)}"</span>`;
+      logEl.appendChild(row);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function renderLockResult(statsEl, finalContent, isCorrect, elapsed) {
+      const bannerClass = isCorrect ? 'detected' : 'maxsteps';
+      const icon  = isCorrect ? '✓' : '✗';
+      const label = isCorrect ? '数据完整' : '数据丢失！';
+      const fileStyle = isCorrect
+        ? 'background:#0c2318;color:var(--green);border:1px solid #238636'
+        : 'background:#1f0e0e;color:var(--red);border:1px solid #f85149';
+      statsEl.innerHTML = `
+        <div class="stat-banner ${bannerClass}">${icon} ${label} · 耗时 ${elapsed}ms</div>
+        <pre style="${fileStyle};margin-top:6px;padding:6px 10px;border-radius:4px;font-size:11px;font-family:inherit;white-space:pre">${escapeHtml(finalContent || '(empty)')}</pre>`;
+    }
+
+    async function runLockDemo(scenario, btn) {
+      btn.disabled = true;
+      const logEl   = document.getElementById('lock-log-' + scenario);
+      const statsEl = document.getElementById('lock-stats-' + scenario);
+      logEl.innerHTML = '';
+      statsEl.innerHTML = '<div class="stat-banner idle">运行中…</div>';
+      try {
+        const res = await fetch('/api/lock-demo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenario }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split('\n');
+          buf = lines.pop() ?? '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            let event;
+            try { event = JSON.parse(line.slice(6)); } catch { continue; }
+            if (event.type === 'lock-event') {
+              appendLockRow(logEl, event.toolName, event.event, event.elapsed);
+            } else if (event.type === 'op') {
+              appendLockOp(logEl, event.toolName, event.op, event.content, event.elapsed);
+            } else if (event.type === 'done') {
+              renderLockResult(statsEl, event.finalContent, event.isCorrect, event.elapsed);
+            }
+          }
+        }
+      } catch (e) {
+        appendCardMsg(logEl, 'detect-stop', 'error', e.message);
       } finally {
         btn.disabled = false;
       }
