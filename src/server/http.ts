@@ -9,6 +9,15 @@ import { ToolRegistry, truncateResult, type ToolDefinition } from '../tools/regi
 import { demoToolDefs } from '../tools/index.js';
 import { resetRetryCounters } from '../providers/mock.js';
 
+interface ToolMeta {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+    isConcurrencySafe: boolean;
+    isReadOnly: boolean;
+    maxResultChars?: number;
+}
+
 interface Models {
     mockModel: LanguageModel;
     realModel: LanguageModel | null;
@@ -40,7 +49,7 @@ function generateSampleData(): string {
     return JSON.stringify({ status: 'ok', total: records.length, records }, null, 2);
 }
 
-export function runWebServer(agent: ChatAgent, models: Models): void {
+export function runWebServer(agent: ChatAgent, models: Models, registry: ToolRegistry): void {
     const app = new Hono();
 
     let useMock = !models.realModel || process.env.USE_MOCK === 'true';
@@ -50,6 +59,18 @@ export function runWebServer(agent: ChatAgent, models: Models): void {
     app.get('/', (c) => {
         const html = readFileSync(join(process.cwd(), 'web', 'index.html'), 'utf-8');
         return c.html(html);
+    });
+
+    app.get('/api/tools', (c) => {
+        const tools: ToolMeta[] = registry.getAll().map(t => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+            isConcurrencySafe: t.isConcurrencySafe ?? false,
+            isReadOnly: t.isReadOnly ?? false,
+            maxResultChars: t.maxResultChars,
+        }));
+        return c.json(tools);
     });
 
     app.get('/api/config', (c) => {

@@ -442,6 +442,85 @@
     .lock-release  { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
     .lock-read     { background: #0c2137; color: var(--blue); }
     .lock-write-op { background: #1f1209; color: #e8a042; }
+
+    /* ════════════════════════════════
+       VIEW: TOOLS
+    ════════════════════════════════ */
+    .tools-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      flex-shrink: 0;
+    }
+    .tools-header-title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .tools-header-count {
+      background: var(--border); color: var(--text);
+      border-radius: 10px; padding: 1px 7px;
+      font-size: 11px; font-weight: 600;
+    }
+
+    .tools-grid {
+      flex: 1; overflow-y: auto;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+
+    .tool-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .tool-card-head {
+      padding: 10px 12px 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; gap: 8px;
+    }
+    .tool-name {
+      font-size: 13px; font-weight: 700; color: var(--blue);
+      font-family: ui-monospace, monospace;
+      flex: 1; word-break: break-all;
+    }
+    .tool-flags { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+    .tool-flag {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.3px;
+      padding: 1px 6px; border-radius: 3px;
+    }
+    .flag-safe     { background: #0c2318; color: var(--green); }
+    .flag-unsafe   { background: #1f1209; color: #e8a042; }
+    .flag-readonly { background: #0c2137; color: var(--blue); }
+    .flag-rw       { background: #2d1b1b; color: var(--red); }
+    .flag-maxchars { background: #1a1a2e; color: #a371f7; }
+
+    .tool-desc {
+      padding: 8px 12px;
+      font-size: 11px; color: var(--muted); line-height: 1.6;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tool-params { padding: 8px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .tool-params-title {
+      font-size: 10px; font-weight: 600; letter-spacing: 0.6px;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 2px;
+    }
+    .param-row {
+      display: flex; align-items: baseline; gap: 6px; font-size: 11px;
+    }
+    .param-name {
+      font-family: ui-monospace, monospace; color: var(--text);
+      font-weight: 600; flex-shrink: 0;
+    }
+    .param-required {
+      font-size: 9px; color: var(--red); font-weight: 700;
+      vertical-align: super; flex-shrink: 0;
+    }
+    .param-type { color: #a371f7; flex-shrink: 0; }
+    .param-desc { color: var(--muted); flex: 1; }
+    .tools-empty { color: var(--muted); font-size: 12px; text-align: center; margin-top: 48px; grid-column: 1/-1; }
   </style>
 </head>
 <body>
@@ -463,6 +542,9 @@
     </div>
     <div class="nav-item" data-view="lock" onclick="switchView('lock', this)">
       <span class="nav-icon">🔒</span> 并发控制
+    </div>
+    <div class="nav-item" data-view="tools" onclick="switchView('tools', this)">
+      <span class="nav-icon">🔧</span> Tools
     </div>
   </nav>
 
@@ -698,6 +780,17 @@
           <div class="card-log" id="lock-log-safe"><p class="log-empty">点击「运行」开始模拟</p></div>
           <div class="card-stats" id="lock-stats-safe"><div class="stat-banner idle">—</div></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ VIEW: TOOLS ═══════════ -->
+    <div class="view" id="view-tools">
+      <div class="tools-header">
+        <span class="tools-header-title">Tools</span>
+        <span class="tools-header-count" id="tools-count">—</span>
+      </div>
+      <div class="tools-grid" id="tools-grid">
+        <p class="tools-empty">加载中…</p>
       </div>
     </div>
 
@@ -1211,6 +1304,95 @@
         btn.disabled = false;
       }
     }
+
+    // ── Tools View ──
+    let toolsLoaded = false;
+
+    async function loadTools() {
+      if (toolsLoaded) return;
+      const grid = document.getElementById('tools-grid');
+      try {
+        const res = await fetch('/api/tools');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const tools = await res.json();
+        document.getElementById('tools-count').textContent = tools.length;
+        grid.innerHTML = '';
+        if (tools.length === 0) {
+          grid.innerHTML = '<p class="tools-empty">暂无已注册的工具</p>';
+          return;
+        }
+        for (const tool of tools) {
+          grid.appendChild(buildToolCard(tool));
+        }
+        toolsLoaded = true;
+      } catch (e) {
+        grid.innerHTML = `<p class="tools-empty">加载失败：${e.message}</p>`;
+      }
+    }
+
+    function buildToolCard(tool) {
+      const props = tool.parameters?.properties ?? {};
+      const required = new Set(tool.parameters?.required ?? []);
+
+      const card = document.createElement('div');
+      card.className = 'tool-card';
+
+      // — head —
+      const head = document.createElement('div');
+      head.className = 'tool-card-head';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'tool-name';
+      nameEl.textContent = tool.name;
+
+      const flags = document.createElement('div');
+      flags.className = 'tool-flags';
+      flags.innerHTML = [
+        `<span class="tool-flag ${tool.isConcurrencySafe ? 'flag-safe' : 'flag-unsafe'}">${tool.isConcurrencySafe ? '可并发' : '串行'}</span>`,
+        `<span class="tool-flag ${tool.isReadOnly ? 'flag-readonly' : 'flag-rw'}">${tool.isReadOnly ? '只读' : '读写'}</span>`,
+        tool.maxResultChars != null
+          ? `<span class="tool-flag flag-maxchars">max ${tool.maxResultChars}</span>`
+          : '',
+      ].join('');
+
+      head.append(nameEl, flags);
+
+      // — desc —
+      const desc = document.createElement('div');
+      desc.className = 'tool-desc';
+      desc.textContent = tool.description;
+
+      // — params —
+      const paramsWrap = document.createElement('div');
+      paramsWrap.className = 'tool-params';
+      const paramKeys = Object.keys(props);
+      if (paramKeys.length > 0) {
+        const title = document.createElement('div');
+        title.className = 'tool-params-title';
+        title.textContent = 'Parameters';
+        paramsWrap.appendChild(title);
+        for (const key of paramKeys) {
+          const p = props[key];
+          const row = document.createElement('div');
+          row.className = 'param-row';
+          const req = required.has(key) ? '<span class="param-required">*</span>' : '';
+          row.innerHTML = `
+            <span class="param-name">${key}${req}</span>
+            <span class="param-type">${p.type ?? 'any'}</span>
+            <span class="param-desc">${p.description ?? ''}</span>`;
+          paramsWrap.appendChild(row);
+        }
+      }
+
+      card.append(head, desc, paramsWrap);
+      return card;
+    }
+
+    // patch switchView to lazy-load tools on first visit
+    const _origSwitchView = switchView;
+    switchView = function(name, el) {
+      _origSwitchView(name, el);
+      if (name === 'tools') loadTools();
+    };
 
     function renderRetryStats(statsEl, { retryCount, succeeded, retryEnabled }) {
       const bannerClass = succeeded ? 'detected' : 'maxsteps';

@@ -21,4 +21,4 @@ for (const tool of registry.getAll()) {
 }
 
 const agent = new ChatAgent(realModel ?? mockModel, registry);
-runWebServer(agent, { mockModel, realModel });
+runWebServer(agent, { mockModel, realModel }, registry);
