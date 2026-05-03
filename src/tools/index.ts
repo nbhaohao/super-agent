@@ -8,6 +8,8 @@ import { editFileTool } from './edit-file.js';
 import { globTool } from './glob.js';
 import { grepTool } from './grep.js';
 import { bashTool } from './bash.js';
+import { fetchUrlTool } from './fetch-url.js';
+import { startPreviewTool } from './start-preview.js';
 
 export type { ToolDefinition } from './registry.js';
 export { ToolRegistry } from './registry.js';
@@ -16,6 +18,7 @@ export { ToolRegistry } from './registry.js';
 export const allTools = [
     weatherTool, calculatorTool, readFileTool, writeFileTool, listDirectoryTool,
     editFileTool, globTool, grepTool, bashTool,
+    fetchUrlTool, startPreviewTool,
 ];
 
 // 循环检测 demo 专用
