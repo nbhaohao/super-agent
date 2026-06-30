@@ -189,24 +189,50 @@ export class ToolRegistry {
   // ── s9：延迟加载（写）──────────────────────────────────────────────
   /** 按精确工具名查找延迟工具（System prompt 已列出名字，无需模糊匹配），匹配到的加入 discovered。 */
   searchTools(query: string): ToolDefinition[] {
-    // TODO: stage 6(s9) —— 按精确工具名查找（System prompt 已列出名字，无需模糊匹配）
-    // 1. query 含逗号则 split 成多个名字（trim + 去空），否则就是单个名字
-    // 2. 逐个 this.tools.get(name)：命中且不是 tool_search 本身 → 收集，并 this.discoveredTools.add(name)
-    // 3. 返回命中的 ToolDefinition[]（被发现的工具下一轮就会出现在 active 里）
-    throw new Error("TODO: stage 6(s9) searchTools");
+    //stage 6(s9) —— 按精确工具名查找（System prompt 已列出名字，无需模糊匹配）
+    const names = query.includes(",")
+      ? query
+          .split(",")
+          .map((n) => n.trim())
+          .filter(Boolean)
+      : [query.trim()];
+    const results: ToolDefinition[] = [];
+    for (const name of names) {
+      const tool = this.tools.get(name);
+      if (tool && tool.name !== "tool_search") {
+        results.push(tool);
+        this.discoveredTools.add(name);
+      }
+    }
+    return results;
   }
   /** 生成延迟工具的名字清单，附到 System prompt：模型据此知道有哪些能力、需要时去 search。 */
   getDeferredToolSummary(): string {
-    // TODO: stage 6(s9) —— 取「shouldDefer 且未被发现」的工具，拼成提示文本
+    // stage 6(s9) —— 取「shouldDefer 且未被发现」的工具，拼成提示文本
     //   每行 `  - 工具名 — searchHint`；开头点明「需要先通过 tool_search 搜索获取完整定义」；
     //   没有延迟工具就返回 ''。
-    throw new Error("TODO: stage 6(s9) getDeferredToolSummary");
+    const deferred = this.getAll().filter(
+      (t) => t.shouldDefer && !this.discoveredTools.has(t.name),
+    );
+    if (deferred.length === 0) return "";
+    return `需要先通过 tool_search 搜索获取完整定义：\n${deferred.map((t) => `  - ${t.name} — ${t.searchHint}`).join("\n")}`;
   }
   /** 粗略估算工具 Schema 的 token 占用（序列化字符数 / 4）：active 进 prompt，deferred 省下来。 */
   countTokenEstimate(): { active: number; deferred: number; total: number } {
-    // TODO: stage 6(s9) —— 遍历所有工具，schemaSize = JSON.stringify({name,description,parameters}).length，
-    //   tokens = ceil(schemaSize/4)；shouldDefer 且未发现 → 计入 deferred，否则 active；返回 {active,deferred,total}。
-    throw new Error("TODO: stage 6(s9) countTokenEstimate");
+    // stage 6(s9) —— 遍历所有工具，schemaSize = JSON.stringify({name,description,parameters}).length，
+    // tokens = ceil(schemaSize/4)；shouldDefer 且未发现 → 计入 deferred，否则 active；返回 {active,deferred,total}。
+    const tools = this.getAll();
+    let active = 0;
+    let deferred = 0;
+    tools.forEach((tool) => {
+      const schemaSize = JSON.stringify(tool).length;
+      const tokens = Math.ceil(schemaSize / 4);
+      if (tool.shouldDefer && !this.discoveredTools.has(tool.name))
+        deferred += tokens;
+      else active += tokens;
+    });
+    const total = active + deferred;
+    return { active, deferred, total };
   }
 }
 
