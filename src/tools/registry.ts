@@ -156,19 +156,34 @@ export class ToolRegistry {
       close(): Promise<void>;
     },
   ): Promise<string[]> {
-    // TODO: stage 5(s8) —— 连接 + 发现 + 命名空间注册
-    // 1. await client.connect()；把 client 存进 this.mcpClients（关闭时统一 close）
-    // 2. tools = await client.listTools()
-    // 3. 逐个工具：prefixedName = `mcp__${serverName}__${tool.name}`；this.tools 已有则 continue（命名空间隔离）
-    // 4. this.register({ name: prefixedName, description 加 `[MCP:${serverName}]` 前缀, parameters: tool.inputSchema,
-    //    isConcurrencySafe:true, isReadOnly:true, maxResultChars:3000,
-    //    execute: 闭包 → client.callTool(tool 的原名, input) })  ← 注意闭包要捕获原名而非前缀名
-    // 5. 返回所有成功注册的 prefixedName[]
-    throw new Error("TODO: stage 5(s8) registerMCPServer");
+    // stage 5(s8) —— 连接 + 发现 + 命名空间注册
+    await client.connect();
+    this.mcpClients.push(client);
+
+    const tools = await client.listTools();
+    const prefixedNames: string[] = [];
+    for (const tool of tools) {
+      const prefixedName = `mcp__${serverName}__${tool.name}`;
+      if (this.tools.has(prefixedName)) continue;
+      this.register({
+        name: prefixedName,
+        description: `${tool.description}[MCP:${serverName}]`,
+        parameters: tool.inputSchema,
+        isConcurrencySafe: true,
+        isReadOnly: true,
+        maxResultChars: 3000,
+        execute: async (input: Record<string, unknown>) => {
+          return await client.callTool(tool.name, input);
+        },
+      });
+      prefixedNames.push(prefixedName);
+    }
+    return prefixedNames;
   }
   async closeAllMCP(): Promise<void> {
-    // TODO: stage 5(s8) —— 逐个 await client.close()，然后清空 this.mcpClients
-    throw new Error("TODO: stage 5(s8) closeAllMCP");
+    // stage 5(s8) —— 逐个 await client.close()，然后清空 this.mcpClients
+    await Promise.all(this.mcpClients.map((client) => client.close()));
+    this.mcpClients = [];
   }
 
   // ── s9：延迟加载（写）──────────────────────────────────────────────
