@@ -11,7 +11,7 @@
  *   s9  searchTools / getDeferredToolSummary / countTokenEstimate —— 延迟加载
  * gen 的部分（register/get/getAll/getActiveTools/toAISDKFormat）是脚手架，已就位。
  */
-import { jsonSchema, type ToolSet } from 'ai';
+import { jsonSchema, type ToolSet } from "ai";
 
 export interface ToolDefinition {
   name: string;
@@ -54,7 +54,8 @@ export class ToolRegistry {
   /** gen：进入 prompt 的工具 = 全部工具 - 未被发现的延迟工具（s9 的过滤口径）。 */
   getActiveTools(): ToolDefinition[] {
     return this.getAll().filter((tool) => {
-      if (tool.shouldDefer && !this.discoveredTools.has(tool.name)) return false;
+      if (tool.shouldDefer && !this.discoveredTools.has(tool.name))
+        return false;
       return true;
     });
   }
@@ -83,7 +84,8 @@ export class ToolRegistry {
           }
           try {
             const raw = await executeFn(input);
-            const text = typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
+            const text =
+              typeof raw === "string" ? raw : JSON.stringify(raw, null, 2);
             return truncateResult(text, maxChars);
           } finally {
             // 不管成功还是抛异常，锁都要还回去，否则整个 Registry 锁死
@@ -99,28 +101,39 @@ export class ToolRegistry {
   // ── s4：读写锁（你写）──────────────────────────────────────────────
   /** 获取共享锁：只要没人独占就能拿，多个只读工具可以同时持有。 */
   async acquireConcurrent(): Promise<void> {
-    // TODO: stage 1(s4) —— while(有人持独占 exclusiveLock) 就把自己的 resolve 推进 waitQueue 挂起；
-    //   等被唤醒重新检查，直到没人独占 → concurrentCount++（拿到共享锁）。
-    throw new Error('TODO: stage 1(s4) acquireConcurrent');
+    //while(有人持独占 exclusiveLock) 就把自己的 resolve 推进 waitQueue 挂起；
+    while (this.exclusiveLock) {
+      await new Promise((resolve) =>
+        this.waitQueue.push(resolve as () => void),
+      );
+    }
+    this.concurrentCount++;
   }
   releaseConcurrent(): void {
-    // TODO: stage 1(s4) —— concurrentCount--；当它归零（最后一个读者走了）时 drainQueue() 唤醒等待者。
-    throw new Error('TODO: stage 1(s4) releaseConcurrent');
+    // concurrentCount--；当它归零（最后一个读者走了）时 drainQueue() 唤醒等待者。
+    this.concurrentCount--;
+    if (this.concurrentCount === 0) this.drainQueue();
   }
   /** 获取独占锁：必须等所有共享锁释放、且没人持独占。 */
   async acquireExclusive(): Promise<void> {
-    // TODO: stage 1(s4) —— while(exclusiveLock || concurrentCount>0) 挂起等待；
-    //   条件都清零后 exclusiveLock=true（独占成功）。
-    throw new Error('TODO: stage 1(s4) acquireExclusive');
+    // while(exclusiveLock || concurrentCount>0) 挂起等待；
+    // 条件都清零后 exclusiveLock=true（独占成功）。
+    while (this.exclusiveLock || this.concurrentCount > 0) {
+      await new Promise((resolve) =>
+        this.waitQueue.push(resolve as () => void),
+      );
+    }
+    this.exclusiveLock = true;
   }
   releaseExclusive(): void {
-    // TODO: stage 1(s4) —— exclusiveLock=false；drainQueue() 唤醒等待者。
-    throw new Error('TODO: stage 1(s4) releaseExclusive');
+    this.exclusiveLock = false;
+    this.drainQueue();
   }
   /** 锁释放时把等待队列全唤醒，让它们重新去抢锁（不是轮询自旋）。 */
   private drainQueue(): void {
-    // TODO: stage 1(s4) —— 把 waitQueue 一次性 splice(0) 取出，逐个 resolve()（让挂起者醒来重抢锁）。
-    throw new Error('TODO: stage 1(s4) drainQueue');
+    // 把 waitQueue 一次性 splice(0) 取出，逐个 resolve()（让挂起者醒来重抢锁）。
+    const queue = this.waitQueue.splice(0);
+    for (const resolve of queue) resolve();
   }
 
   // ── s8：MCP 注册（写）──────────────────────────────────────────────
@@ -130,7 +143,18 @@ export class ToolRegistry {
    */
   async registerMCPServer(
     serverName: string,
-    client: { connect(): Promise<void>; listTools(): Promise<Array<{ name: string; description: string; inputSchema: Record<string, unknown> }>>; callTool(name: string, args: Record<string, unknown>): Promise<string>; close(): Promise<void> },
+    client: {
+      connect(): Promise<void>;
+      listTools(): Promise<
+        Array<{
+          name: string;
+          description: string;
+          inputSchema: Record<string, unknown>;
+        }>
+      >;
+      callTool(name: string, args: Record<string, unknown>): Promise<string>;
+      close(): Promise<void>;
+    },
   ): Promise<string[]> {
     // TODO: stage 5(s8) —— 连接 + 发现 + 命名空间注册
     // 1. await client.connect()；把 client 存进 this.mcpClients（关闭时统一 close）
@@ -140,11 +164,11 @@ export class ToolRegistry {
     //    isConcurrencySafe:true, isReadOnly:true, maxResultChars:3000,
     //    execute: 闭包 → client.callTool(tool 的原名, input) })  ← 注意闭包要捕获原名而非前缀名
     // 5. 返回所有成功注册的 prefixedName[]
-    throw new Error('TODO: stage 5(s8) registerMCPServer');
+    throw new Error("TODO: stage 5(s8) registerMCPServer");
   }
   async closeAllMCP(): Promise<void> {
     // TODO: stage 5(s8) —— 逐个 await client.close()，然后清空 this.mcpClients
-    throw new Error('TODO: stage 5(s8) closeAllMCP');
+    throw new Error("TODO: stage 5(s8) closeAllMCP");
   }
 
   // ── s9：延迟加载（写）──────────────────────────────────────────────
@@ -154,20 +178,20 @@ export class ToolRegistry {
     // 1. query 含逗号则 split 成多个名字（trim + 去空），否则就是单个名字
     // 2. 逐个 this.tools.get(name)：命中且不是 tool_search 本身 → 收集，并 this.discoveredTools.add(name)
     // 3. 返回命中的 ToolDefinition[]（被发现的工具下一轮就会出现在 active 里）
-    throw new Error('TODO: stage 6(s9) searchTools');
+    throw new Error("TODO: stage 6(s9) searchTools");
   }
   /** 生成延迟工具的名字清单，附到 System prompt：模型据此知道有哪些能力、需要时去 search。 */
   getDeferredToolSummary(): string {
     // TODO: stage 6(s9) —— 取「shouldDefer 且未被发现」的工具，拼成提示文本
     //   每行 `  - 工具名 — searchHint`；开头点明「需要先通过 tool_search 搜索获取完整定义」；
     //   没有延迟工具就返回 ''。
-    throw new Error('TODO: stage 6(s9) getDeferredToolSummary');
+    throw new Error("TODO: stage 6(s9) getDeferredToolSummary");
   }
   /** 粗略估算工具 Schema 的 token 占用（序列化字符数 / 4）：active 进 prompt，deferred 省下来。 */
   countTokenEstimate(): { active: number; deferred: number; total: number } {
     // TODO: stage 6(s9) —— 遍历所有工具，schemaSize = JSON.stringify({name,description,parameters}).length，
     //   tokens = ceil(schemaSize/4)；shouldDefer 且未发现 → 计入 deferred，否则 active；返回 {active,deferred,total}。
-    throw new Error('TODO: stage 6(s9) countTokenEstimate');
+    throw new Error("TODO: stage 6(s9) countTokenEstimate");
   }
 }
 
@@ -176,12 +200,22 @@ export class ToolRegistry {
  * Head/Tail 60/40 分割：保留前 60% + 后 40%，中间用「... [省略 N 字符] ...」标记。
  * 为什么不只截头部？文件尾部往往更有价值（日志最新条目、代码函数实现、配置最后一节）。
  */
-export function truncateResult(text: string, maxChars: number = DEFAULT_MAX_RESULT_CHARS): string {
-  // TODO: stage 1(s4) —— Head/Tail 60/40 截断
+export function truncateResult(
+  text: string,
+  maxChars: number = DEFAULT_MAX_RESULT_CHARS,
+): string {
+  // Head/Tail 60/40 截断
+
   // 1. text.length <= maxChars → 原样返回
   // 2. headSize = floor(maxChars*0.6)，tailSize = maxChars - headSize
   // 3. head = 前 headSize 个字符，tail = 后 tailSize 个字符（slice(-tailSize)）
   // 4. dropped = text.length - headSize - tailSize
   // 5. 返回 `${head}\n\n... [省略 ${dropped} 字符] ...\n\n${tail}`
-  throw new Error('TODO: stage 1(s4) truncateResult');
+  if (text.length <= maxChars) return text;
+  const headSize = Math.floor(maxChars * 0.6);
+  const tailSize = maxChars - headSize;
+  const head = text.slice(0, headSize);
+  const tail = text.slice(-tailSize);
+  const dropped = text.length - headSize - tailSize;
+  return `${head}\n\n... [省略 ${dropped} 字符] ...\n\n${tail}`;
 }
