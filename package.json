@@ -12,7 +12,13 @@
     "build": "tsc",
     "v:s1": "tsx --env-file-if-exists=.env src/_smoke/s1-chat.ts",
     "v:s2": "tsx --env-file-if-exists=.env src/_smoke/s2-loop.ts",
-    "v:s3": "tsx --env-file-if-exists=.env src/_smoke/s3-fuses.ts"
+    "v:s3": "tsx --env-file-if-exists=.env src/_smoke/s3-fuses.ts",
+    "v:s4": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts",
+    "v:s5": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts",
+    "v:s6": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts",
+    "v:s7": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts",
+    "v:s8": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts",
+    "v:s9": "tsx --env-file-if-exists=.env src/_smoke/m02-tools.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2",
