@@ -1,2 +1,4 @@
 {"role":"user","content":"hello"}
 {"role":"assistant","content":[{"type":"text","text":"你好！👋 我是 **Super Agent**，很高兴为你服务！\n\n我拥有丰富的工具能力，可以帮你完成各种任务，比如：\n\n- 🌤️ **查询天气** - 查全国各城市的实时天气\n- 💻 **GitHub 操作** - 管理仓库、Issues、PR、代码搜索等\n- 📁 **文件操作** - 读写文件、目录浏览、代码搜索\n- 🧮 **数学计算** - 帮你算各种表达式\n- 🌐 **网页抓取** - 获取网页内容\n- 🔧 **更多高级工具** - 浏览器操作、数据库查询等\n\n有什么我可以帮你的吗？尽管说！😊"}]}
+{"role":"user","content":"hello"}
+{"role":"assistant","content":[{"type":"text","text":"Hello again! 😄\n\nNice to see you! What can I help you with today? Feel free to ask me anything — whether it's checking the weather, working with GitHub, doing some calculations, or any other task you have in mind! 🚀"}]}

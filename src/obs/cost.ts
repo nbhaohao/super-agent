@@ -1,18 +1,43 @@
 // 已就位（AI 生成）——Token 用量归一化 + 费用追踪（s13：Cache & Cost）
 export interface ModelPricing {
-  inputPerM: number;      // $/1M input tokens
+  inputPerM: number; // $/1M input tokens
   outputPerM: number;
   cacheWritePerM: number;
   cacheReadPerM: number;
 }
 
 export const PRICE_TABLE: Record<string, ModelPricing> = {
-  'deepseek-chat':     { inputPerM: 0.27,  outputPerM: 1.10,  cacheWritePerM: 0.27,  cacheReadPerM: 0.027 },
-  'deepseek-reasoner': { inputPerM: 0.55,  outputPerM: 2.19,  cacheWritePerM: 0.55,  cacheReadPerM: 0.14  },
-  'claude-sonnet-4-6': { inputPerM: 3.0,   outputPerM: 15.0,  cacheWritePerM: 3.75,  cacheReadPerM: 0.30  },
-  'claude-opus-4-8':   { inputPerM: 15.0,  outputPerM: 75.0,  cacheWritePerM: 18.75, cacheReadPerM: 1.50  },
-  'gpt-4o':            { inputPerM: 2.5,   outputPerM: 10.0,  cacheWritePerM: 2.5,   cacheReadPerM: 1.25  },
-  'mock':              { inputPerM: 0,     outputPerM: 0,     cacheWritePerM: 0,     cacheReadPerM: 0     },
+  "deepseek-chat": {
+    inputPerM: 0.27,
+    outputPerM: 1.1,
+    cacheWritePerM: 0.27,
+    cacheReadPerM: 0.027,
+  },
+  "deepseek-reasoner": {
+    inputPerM: 0.55,
+    outputPerM: 2.19,
+    cacheWritePerM: 0.55,
+    cacheReadPerM: 0.14,
+  },
+  "claude-sonnet-4-6": {
+    inputPerM: 3.0,
+    outputPerM: 15.0,
+    cacheWritePerM: 3.75,
+    cacheReadPerM: 0.3,
+  },
+  "claude-opus-4-8": {
+    inputPerM: 15.0,
+    outputPerM: 75.0,
+    cacheWritePerM: 18.75,
+    cacheReadPerM: 1.5,
+  },
+  "gpt-4o": {
+    inputPerM: 2.5,
+    outputPerM: 10.0,
+    cacheWritePerM: 2.5,
+    cacheReadPerM: 1.25,
+  },
+  mock: { inputPerM: 0, outputPerM: 0, cacheWritePerM: 0, cacheReadPerM: 0 },
 };
 
 export interface NormalizedUsage {
@@ -35,23 +60,40 @@ export function normalizeUsage(
   usage: { inputTokens?: number; outputTokens?: number; [k: string]: unknown },
   providerMeta?: Record<string, unknown>,
 ): NormalizedUsage {
-  // TODO: stage s13
-  // 目标：抹平两类厂商的 cache 计数口径，产出统一的 NormalizedUsage。
-  // ① OpenAI / DeepSeek：cachedInputTokens（或 cached_tokens）已【含】在 inputTokens 里
-  //    → cacheReadTokens = 该值；inputTokens 要【减掉】它（否则缓存部分被按全价重复计）
-  // ② Anthropic：缓存单列在 providerMeta.anthropic.{cacheCreationInputTokens, cacheReadInputTokens}
-  //    → 直接取；inputTokens 本身【不含】 cache，【不要】减
-  // 缺省字段一律按 0；返回 { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }
-  throw new Error('TODO: stage s13 — normalizeUsage');
+  const inputTokens = usage.inputTokens ?? 0;
+  const outputTokens = usage.outputTokens ?? 0;
+
+  // ② Anthropic：缓存单列在 providerMeta.anthropic，inputTokens 不含 cache → 直接取，不减
+  const anthro = providerMeta?.anthropic as Record<string, unknown> | undefined;
+  if (anthro) {
+    return {
+      inputTokens,
+      outputTokens,
+      cacheWriteTokens: (anthro.cacheCreationInputTokens as number) ?? 0,
+      cacheReadTokens: (anthro.cacheReadInputTokens as number) ?? 0,
+    };
+  }
+
+  // ① OpenAI / DeepSeek（含 default）：cachedInputTokens 已含在 inputTokens 里
+  //    → 减出来单独计，避免按全价重复计费
+  const cached =
+    (usage.cachedInputTokens as number) ?? (usage.cached_tokens as number) ?? 0;
+  return {
+    inputTokens: inputTokens - cached,
+    outputTokens,
+    cacheReadTokens: cached,
+    cacheWriteTokens: 0,
+  };
 }
 
 function computeCost(u: NormalizedUsage, p: ModelPricing): number {
   return (
-    u.inputTokens * p.inputPerM +
-    u.outputTokens * p.outputPerM +
-    u.cacheWriteTokens * p.cacheWritePerM +
-    u.cacheReadTokens * p.cacheReadPerM
-  ) / 1_000_000;
+    (u.inputTokens * p.inputPerM +
+      u.outputTokens * p.outputPerM +
+      u.cacheWriteTokens * p.cacheWritePerM +
+      u.cacheReadTokens * p.cacheReadPerM) /
+    1_000_000
+  );
 }
 
 export interface UsageTotals {
@@ -61,7 +103,7 @@ export interface UsageTotals {
   cacheWriteTokens: number;
   totalCost: number;
   baselineCost: number; // 假设无 cache 的理论成本
-  savedCost: number;    // baselineCost - totalCost
+  savedCost: number; // baselineCost - totalCost
 }
 
 export class UsageTracker {
@@ -79,20 +121,24 @@ export class UsageTracker {
     let baselineCost = 0;
 
     for (const r of this.records) {
-      const p = PRICE_TABLE[r.model] ?? PRICE_TABLE['mock'];
+      const p = PRICE_TABLE[r.model] ?? PRICE_TABLE["mock"];
       totalCost += computeCost(r, p);
       // baseline = cache read 按 input 价计
       baselineCost += computeCost(
-        { ...r, inputTokens: r.inputTokens + r.cacheReadTokens, cacheReadTokens: 0 },
+        {
+          ...r,
+          inputTokens: r.inputTokens + r.cacheReadTokens,
+          cacheReadTokens: 0,
+        },
         p,
       );
     }
 
     return {
-      inputTokens: sum('inputTokens'),
-      outputTokens: sum('outputTokens'),
-      cacheReadTokens: sum('cacheReadTokens'),
-      cacheWriteTokens: sum('cacheWriteTokens'),
+      inputTokens: sum("inputTokens"),
+      outputTokens: sum("outputTokens"),
+      cacheReadTokens: sum("cacheReadTokens"),
+      cacheWriteTokens: sum("cacheWriteTokens"),
       totalCost,
       baselineCost,
       savedCost: baselineCost - totalCost,
@@ -103,7 +149,7 @@ export class UsageTracker {
     const t = this.totals();
     const $ = (n: number) => `$${n.toFixed(6)}`;
     return [
-      '── Usage ──────────────────────────────',
+      "── Usage ──────────────────────────────",
       `  Input:         ${t.inputTokens.toLocaleString()} tokens`,
       `  Output:        ${t.outputTokens.toLocaleString()} tokens`,
       `  Cache Read:    ${t.cacheReadTokens.toLocaleString()} tokens`,
@@ -111,7 +157,7 @@ export class UsageTracker {
       `  Cost:          ${$(t.totalCost)}`,
       `  Without cache: ${$(t.baselineCost)}`,
       `  Saved:         ${$(t.savedCost)}`,
-      '────────────────────────────────────────',
-    ].join('\n');
+      "────────────────────────────────────────",
+    ].join("\n");
   }
 }
