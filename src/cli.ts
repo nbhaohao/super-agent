@@ -1,9 +1,13 @@
 /**
  * 已就位（AI 生成）—— 终端 REPL 入口（胶水层，扫一眼即可）。
  *
- * m02 起 CLI 长出工具系统：ToolRegistry 统一注册内置工具 + tool_search + 模拟延迟工具，
- * 并尝试连一个 MCP Server（失败/无 token 自动降级 Mock）。每实现一关，对应能力就在这里点亮。
- * （未实现的关里调到该能力会抛 TODO——属于预期：先让本关测试变绿再回来体验。）
+ * m02 起 CLI 长出工具系统；m03 起长出上下文工程：
+ *   s10 会话持久化（JSONL）+ 模块化 system prompt（PromptBuilder）
+ *   s11 每轮 microcompact 清旧工具结果
+ *   s12 每轮 applyDefense 防上下文爆窗
+ *   s13 normalizeUsage 归一各厂商用量 + /context 看占用矩阵 + /usage 看花费与缓存节省
+ * 每实现一关，对应能力就在这里点亮；未实现的关里调到该能力会抛 TODO——已用 try/catch 兜底降级，
+ * 先让本关测试变绿再回来体验（pnpm agent）。
  */
 import "dotenv/config";
 import { createInterface } from "node:readline";
@@ -19,9 +23,23 @@ import {
 } from "./tools/builtin.js";
 import { MCPClient, MockMCPClient } from "./tools/mcp.js";
 import { createLogger } from "./obs/logger.js";
+// ── m03 上下文工程 ──
+import { SessionStore } from "./context/session.js";
+import {
+  PromptBuilder,
+  coreRules,
+  toolGuide,
+  deferredToolsHint,
+  sessionContext,
+} from "./context/prompt-pipe.js";
+import { microcompact } from "./context/compaction.js";
+import { applyDefense, estimateMessageTokens } from "./context/defense.js";
+import { normalizeUsage, UsageTracker } from "./obs/cost.js";
+import { renderContextMatrix } from "./context/view.js";
 
 const BASE_SYSTEM =
   "你是 Super Agent，一个有工具调用能力的 AI 助手。需要时主动使用工具获取信息，不要编造数据。";
+const MODEL_NAME = process.env.AGENT_MODEL ?? "deepseek-chat";
 
 const registry = new ToolRegistry();
 registry.register(...allTools);
@@ -31,8 +49,19 @@ registry.register(...simulatedDeferredTools()); // s9：模拟工具膨胀（默
 const model = createModel();
 const logger = createLogger();
 const detector = createLoopDetector();
-const messages: ModelMessage[] = [];
 const budget: BudgetState = { used: 0, limit: 50000 };
+
+// s10：会话持久化——启动即从 JSONL 恢复历史（进程重启不丢上下文）
+const session = new SessionStore(process.env.AGENT_SESSION ?? "default");
+const messages: ModelMessage[] = session.exists() ? session.load() : [];
+
+// s13：用量统计——每步 normalizeUsage 后累计，/usage 看花费与缓存节省
+const usageTracker = new UsageTracker();
+const builder = new PromptBuilder()
+  .pipe("rules", coreRules())
+  .pipe("guide", toolGuide())
+  .pipe("deferred", deferredToolsHint())
+  .pipe("session", sessionContext());
 
 async function connectMCP(): Promise<void> {
   const token = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
@@ -49,11 +78,76 @@ async function connectMCP(): Promise<void> {
   }
 }
 
+// s10：用 PromptBuilder 组装；未实现时退回基础 prompt + s9 延迟工具清单
 function systemPrompt(): string {
   try {
-    return BASE_SYSTEM + registry.getDeferredToolSummary(); // s9：把延迟工具清单附进 system
+    return builder.build({
+      toolCount: registry.getActiveTools().length,
+      deferredToolSummary: registry.getDeferredToolSummary(),
+      sessionMessageCount: messages.length,
+      sessionId: process.env.AGENT_SESSION ?? "default",
+    });
   } catch {
-    return BASE_SYSTEM; // s9 未实现时退回基础 prompt
+    try {
+      return BASE_SYSTEM + registry.getDeferredToolSummary();
+    } catch {
+      return BASE_SYSTEM;
+    }
+  }
+}
+
+// s11 + s12：每轮发送前压缩 + 防线（任一关未实现则跳过那一步，不影响对话）
+function squeezeContext(): void {
+  try {
+    const r = microcompact(messages);
+    messages.length = 0;
+    messages.push(...r.messages);
+  } catch {}
+  try {
+    const r = applyDefense(messages);
+    messages.length = 0;
+    messages.push(...r.messages);
+  } catch {}
+}
+
+// /context：上下文占用 16×16 矩阵
+function printContext(): void {
+  const sys = systemPrompt();
+  const toolJson = JSON.stringify(registry.toAISDKFormat());
+  try {
+    console.log(
+      renderContextMatrix({
+        systemChars: sys.length,
+        toolChars: toolJson.length,
+        messageChars: messages.reduce(
+          (s, m) => s + JSON.stringify(m.content).length,
+          0,
+        ),
+        contextWindow: 200_000,
+        modelName: MODEL_NAME,
+      }),
+    );
+  } catch {
+    console.log(`  /context 未就位（s12/s13），当前估算 ${estimateTokens()} tokens`);
+  }
+}
+
+function estimateTokens(): number {
+  try {
+    return estimateMessageTokens(messages);
+  } catch {
+    return Math.ceil(
+      messages.reduce((s, m) => s + JSON.stringify(m.content).length, 0) / 4,
+    );
+  }
+}
+
+// /usage：花费与缓存节省面板
+function printUsage(): void {
+  try {
+    console.log(usageTracker.formatPanel());
+  } catch {
+    console.log("  /usage 未就位（s13 normalizeUsage 尚未实现）");
   }
 }
 
@@ -67,16 +161,33 @@ function ask() {
       rl.close();
       return;
     }
-    messages.push({ role: "user", content: trimmed });
+    if (trimmed === "/context") return printContext(), ask();
+    if (trimmed === "/usage") return printUsage(), ask();
+
+    const userMsg: ModelMessage = { role: "user", content: trimmed };
+    messages.push(userMsg);
+    session.append(userMsg); // s10：落盘
+
+    squeezeContext(); // s11 + s12
+    const before = messages.length;
+
     process.stdout.write("Assistant: ");
     const result = await agentLoop(model, registry.toAISDKFormat(), messages, {
       system: systemPrompt(),
       budget,
       detector,
       logger,
+      onStep: (usage, meta) => {
+        // s13：归一各厂商用量口径后累计；未实现则跳过
+        try {
+          usageTracker.record(normalizeUsage(usage, meta), MODEL_NAME);
+        } catch {}
+      },
     });
+
+    session.appendAll(messages.slice(before)); // s10：本轮新增消息落盘
     console.log(
-      `\n  [stop: ${result.stoppedBy} · steps: ${result.steps} · tokens: ${budget.used}/${budget.limit}]`,
+      `\n  [stop: ${result.stoppedBy} · steps: ${result.steps} · tokens: ${budget.used}/${budget.limit} · ctx≈${estimateTokens()} · /context /usage]`,
     );
     ask();
   });
@@ -86,10 +197,10 @@ async function main() {
   await connectMCP();
   const active = registry.getActiveTools().length;
   console.log(
-    `Super Agent v0.4 — Tool System（共 ${registry.getAll().length} 工具，活跃 ${active}）。输入 exit 退出`,
+    `Super Agent v0.5 — Context Engineering（共 ${registry.getAll().length} 工具，活跃 ${active}，历史 ${messages.length} 条）。输入 exit 退出`,
   );
   console.log(
-    '试试："列一下当前目录"、"读 package.json"、"把 X 改成 Y"、"查 vercel/ai 的 issues"',
+    '试试："列一下当前目录"、"读 package.json"，或 /context 看占用、/usage 看花费',
   );
   ask();
 }

@@ -38,6 +38,11 @@ export interface AgentLoopOptions {
   maxSteps?: number;
   maxRetries?: number;
   out?: { write(s: string): void };
+  // m03 s13：每步 API 用量回调（含 providerMetadata），上层用它做 cost 归一/统计；不传则跳过
+  onStep?: (
+    usage: Record<string, unknown>,
+    providerMetadata: Record<string, unknown> | undefined,
+  ) => void;
 }
 
 export async function agentLoop(
@@ -120,6 +125,12 @@ export async function agentLoop(
         }
         stepResponse = await result.response;
         stepUsage = await result.usage;
+        if (options.onStep) {
+          const meta = (await result.providerMetadata) as
+            | Record<string, unknown>
+            | undefined;
+          options.onStep(stepUsage as unknown as Record<string, unknown>, meta);
+        }
         break; // 本步成功
       } catch (err) {
         if (attempt > maxRetries || !isRetryable(err)) {
