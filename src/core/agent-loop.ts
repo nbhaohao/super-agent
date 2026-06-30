@@ -10,12 +10,12 @@
  *
  * 返回结构化结果（steps/stoppedBy/text）而非只靠 console——便于上层与测试断言「为什么停」。
  */
-import { streamText, type ModelMessage, type ToolSet } from 'ai';
-import type { LanguageModelV2 } from '@ai-sdk/provider';
-import { createLoopDetector, type LoopDetector } from './loop-detection.js';
-import { isRetryable, calculateDelay, sleep } from './retry.js';
-import { silentLogger, type Logger } from '../obs/logger.js';
-import { ProviderError } from '../errors.js';
+import { streamText, type ModelMessage, type ToolSet } from "ai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
+import { createLoopDetector, type LoopDetector } from "./loop-detection.js";
+import { isRetryable, calculateDelay, sleep } from "./retry.js";
+import { silentLogger, type Logger } from "../obs/logger.js";
+import { ProviderError } from "../errors.js";
 
 /** Token 预算：由调用方持有并跨多轮 query 持续累计——写进函数内部会每轮清零（隐蔽 bug）。 */
 export interface BudgetState {
@@ -23,7 +23,7 @@ export interface BudgetState {
   limit: number;
 }
 
-export type StopReason = 'final' | 'max_steps' | 'loop_detected' | 'budget';
+export type StopReason = "final" | "max_steps" | "loop_detected" | "budget";
 export interface LoopResult {
   steps: number;
   stoppedBy: StopReason;
@@ -52,47 +52,69 @@ export async function agentLoop(
   const out = options.out ?? process.stdout;
 
   detector.reset();
-  let finalText = '';
+  let finalText = "";
   let step = 0;
 
   while (step < maxSteps) {
     step++;
-    log.debug('agent-loop step', { step });
+    log.debug("agent-loop step", { step });
 
     let hasToolCall = false;
-    let fullText = '';
+    let fullText = "";
     let shouldBreak = false;
     let lastToolCall: { name: string; input: unknown } | null = null;
-    let stepResponse: Awaited<ReturnType<typeof streamText>['response']> | null = null;
-    let stepUsage: Awaited<ReturnType<typeof streamText>['usage']> | null = null;
+    let stepResponse: Awaited<
+      ReturnType<typeof streamText>["response"]
+    > | null = null;
+    let stepUsage: Awaited<ReturnType<typeof streamText>["usage"]> | null =
+      null;
 
     // ② 步骤级重试：包裹整个 stream 消费过程；maxRetries:0 禁用 SDK 内置重试，由我们全权接管
     for (let attempt = 1; ; attempt++) {
       try {
-        const result = streamText({ model, system, tools, messages, maxRetries: 0 });
+        const result = streamText({
+          model,
+          system,
+          tools,
+          messages,
+          maxRetries: 0,
+        });
         for await (const part of result.fullStream) {
           switch (part.type) {
-            case 'text-delta':
+            case "text-delta":
               out.write(part.text);
               fullText += part.text;
               break;
-            case 'tool-call': {
+            case "tool-call": {
               hasToolCall = true;
               lastToolCall = { name: part.toolName, input: part.input };
               // ① 执行前先问：卡住了吗？
               const d = detector.detect(part.toolName, part.input);
               if (d.stuck) {
-                log.warn('loop-detection', { detector: d.detector, level: d.level, count: d.count });
-                if (d.level === 'critical') shouldBreak = true;
-                else messages.push({ role: 'user', content: `[系统提醒] ${d.message}。请换一个思路解决问题，不要重复同样的操作。` });
+                log.warn("loop-detection", {
+                  detector: d.detector,
+                  level: d.level,
+                  count: d.count,
+                });
+                if (d.level === "critical") shouldBreak = true;
+                else
+                  messages.push({
+                    role: "user",
+                    content: `[系统提醒] ${d.message}。请换一个思路解决问题，不要重复同样的操作。`,
+                  });
               }
               detector.record(part.toolName, part.input);
               break;
             }
-            case 'tool-result':
-              if (lastToolCall) detector.recordResult(lastToolCall.name, lastToolCall.input, part.output);
+            case "tool-result":
+              if (lastToolCall)
+                detector.recordResult(
+                  lastToolCall.name,
+                  lastToolCall.input,
+                  part.output,
+                );
               break;
-            case 'error':
+            case "error":
               throw part.error;
           }
         }
@@ -101,18 +123,23 @@ export async function agentLoop(
         break; // 本步成功
       } catch (err) {
         if (attempt > maxRetries || !isRetryable(err)) {
-          throw new ProviderError('LLM 调用失败：不可重试或已达重试上限', { cause: err });
+          throw new ProviderError("LLM 调用失败：不可重试或已达重试上限", {
+            cause: err,
+          });
         }
         const delay = calculateDelay(attempt);
-        log.warn('retry', { attempt, maxRetries, delay });
+        log.warn("retry", { attempt, maxRetries, delay });
         await sleep(delay);
-        hasToolCall = false; fullText = ''; shouldBreak = false; lastToolCall = null;
+        hasToolCall = false;
+        fullText = "";
+        shouldBreak = false;
+        lastToolCall = null;
       }
     }
 
     if (shouldBreak) {
-      log.info('agent-loop stop', { reason: 'loop_detected', step });
-      return { steps: step, stoppedBy: 'loop_detected', text: finalText };
+      log.info("agent-loop stop", { reason: "loop_detected", step });
+      return { steps: step, stoppedBy: "loop_detected", text: finalText };
     }
 
     messages.push(...(stepResponse!.messages as ModelMessage[]));
@@ -122,20 +149,20 @@ export async function agentLoop(
     if (budget) {
       const u = stepUsage!;
       budget.used += (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
-      log.debug('budget', { used: budget.used, limit: budget.limit });
+      log.debug("budget", { used: budget.used, limit: budget.limit });
       if (budget.used > budget.limit) {
-        log.info('agent-loop stop', { reason: 'budget', step });
-        return { steps: step, stoppedBy: 'budget', text: finalText };
+        log.info("agent-loop stop", { reason: "budget", step });
+        return { steps: step, stoppedBy: "budget", text: finalText };
       }
     }
 
     // 退出条件：模型这一步没调工具 = 它认为可以直接回复了
     if (!hasToolCall) {
-      log.info('agent-loop stop', { reason: 'final', step });
-      return { steps: step, stoppedBy: 'final', text: finalText };
+      log.info("agent-loop stop", { reason: "final", step });
+      return { steps: step, stoppedBy: "final", text: finalText };
     }
   }
 
-  log.info('agent-loop stop', { reason: 'max_steps', step });
-  return { steps: step, stoppedBy: 'max_steps', text: finalText };
+  log.info("agent-loop stop", { reason: "max_steps", step });
+  return { steps: step, stoppedBy: "max_steps", text: finalText };
 }
