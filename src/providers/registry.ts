@@ -1,10 +1,11 @@
 /**
- * 多 provider registry（s1 核心 · 后端核心，重点 review）。
+ * 多 provider registry（s1 核心 · 你来写的「胶水/编排」件 —— write）。
  *
  * 价值：把「选哪个 LLM」收敛到一处。调用方只认 LanguageModelV2 接口、只调 createModel()，
  * 从不 import 具体 provider 包——换模型 = 改 LLM_PROVIDER 一个 env，业务代码零改动（Provider 模式 / 依赖倒置）。
  *
  * 默认 DeepSeek（OpenAI 兼容，走 @ai-sdk/openai + baseURL）；mock 零 key 可跑，是测试替身。
+ * 红测试规格：test/m01.test.ts 前三条（mock 是 v2 / 未知 provider 抛 ConfigError / 缺 key 启动期抛）。
  */
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
@@ -29,6 +30,8 @@ export function createModel(
   config: Config = loadConfig(),
 ): LanguageModelV2 {
   const p = provider ?? config.provider;
+  // 关键纪律（红测试第3条在卡这个）：缺 key 必须在「构造」期就抛 ConfigError —— requireKey() 负责，
+  //   别留到首次网络调用才炸。只「构造」不「调用」。
   switch (p) {
     case "mock":
       return createMockModel();
@@ -36,6 +39,20 @@ export function createModel(
       return createOpenAI({
         baseURL: DEEPSEEK_BASE_URL,
         apiKey: requireKey("deepseek", config),
+        // ponytail: AI SDK v5 maps system→developer for non-gpt model IDs; rewrite before send
+        fetch: async (url, init) => {
+          if (init?.body && typeof init.body === "string") {
+            const body = JSON.parse(init.body);
+            if (body.messages) {
+              body.messages = body.messages.map(
+                (m: { role: string; content: unknown }) =>
+                  m.role === "developer" ? { ...m, role: "system" } : m,
+              );
+              init = { ...init, body: JSON.stringify(body) };
+            }
+          }
+          return globalThis.fetch(url, init);
+        },
       }).chat("deepseek-v4-flash");
     case "openai":
       return createOpenAI({ apiKey: requireKey("openai", config) }).chat(

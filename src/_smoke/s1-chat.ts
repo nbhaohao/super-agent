@@ -1,25 +1,34 @@
 /**
- * s1 真实 LLM 冒烟：流式对话 + 记忆。需 .env 里的 DEEPSEEK_API_KEY（LLM_PROVIDER=deepseek）。
- * 跑：pnpm v:s1   验证：第二轮能引用第一轮说过的名字 → messages 历史确实回传了。
+ * s1 真实 LLM 冒烟（手动 REPL —— 你自己敲 prompt，不再注入预设台词）。
+ * 需 .env 里的 DEEPSEEK_API_KEY（LLM_PROVIDER=deepseek）；或 LLM_PROVIDER=mock 零 key 跑。
+ *
+ * 跑：pnpm v:s1
+ * 验证记忆：先说「我叫小明」，再问「我叫什么名字」——第二轮能答出来，
+ *           就证明 messages 历史被完整回传（模型本身无记忆）。输入 exit 退出。
  */
 import 'dotenv/config';
+import { createInterface } from 'node:readline';
 import type { ModelMessage } from 'ai';
 import { createModel } from '../providers/registry.js';
 import { streamChat } from '../core/chat.js';
 
+const SYSTEM = '你是 Super Agent，一个简洁、诚实的 AI 助手。';
 const model = createModel();
-const messages: ModelMessage[] = [];
+const messages: ModelMessage[] = []; // 跨轮持续累积 = 记忆的全部秘密
 
-async function main() {
-  messages.push({ role: 'user', content: '你好，我叫小明，请用一句话介绍你自己。' });
-  process.stdout.write('Assistant: ');
-  await streamChat(model, messages);
-  console.log();
+const rl = createInterface({ input: process.stdin, output: process.stdout });
 
-  messages.push({ role: 'user', content: '我刚才说我叫什么名字？' });
-  process.stdout.write('Assistant: ');
-  await streamChat(model, messages);
-  console.log('\n\n[验证] 上一句应当提到「小明」——说明对话历史被完整传回。');
+function ask() {
+  rl.question('\nYou: ', async (input) => {
+    const text = input.trim();
+    if (!text || text === 'exit') { rl.close(); return; }
+    messages.push({ role: 'user', content: text });
+    process.stdout.write('Assistant: ');
+    await streamChat(model, messages, { system: SYSTEM }); // ← 你写的胶水在这跑
+    console.log(`\n  [历史 ${messages.length} 条 · 整段回传 = 它「记得住」的原因]`);
+    ask();
+  });
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+console.log('s1 手动冒烟 — 自己敲 prompt（试：先说名字，下一轮再问名字）。exit 退出。');
+ask();

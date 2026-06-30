@@ -1,11 +1,12 @@
 /**
- * 流式对话（s1 核心 · 后端核心，重点 review）。
+ * 流式对话（s1 核心 · 你来写的「胶水/编排」件 —— write）。
  *
- * 三件事：① streamText 拿流式回复 ② 逐字写到 out（打字机效果）③ 把这轮 user+assistant
- * 追加进 messages 历史。关键认知：模型本身无记忆，下一轮能「记住」是因为 messages 整个传回去。
+ * 这是本关唯一要你亲手写的编排逻辑：把流式回复接起来 + 维护对话历史。
+ * 关键认知：模型本身无记忆，下一轮能「记住」全靠把整个 messages 再传回去。
+ * 红测试规格：test/m01.test.ts → 「streamChat 回流文本并把 assistant 消息追加进历史」。
  */
-import { streamText, type ModelMessage } from 'ai';
-import type { LanguageModelV2 } from '@ai-sdk/provider';
+import { streamText, type ModelMessage } from "ai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 
 export interface ChatOptions {
   system?: string;
@@ -23,13 +24,12 @@ export async function streamChat(
   options: ChatOptions = {},
 ): Promise<string> {
   const out = options.out ?? process.stdout;
-  const result = streamText({ model, system: options.system, messages });
-
-  let full = '';
+  const result = await streamText({ model, system: options.system, messages });
+  let full = "";
   for await (const chunk of result.textStream) {
     out.write(chunk);
     full += chunk;
   }
-  messages.push({ role: 'assistant', content: full });
+  messages.push({ role: "assistant", content: full });
   return full;
 }
