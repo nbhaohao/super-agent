@@ -8,9 +8,9 @@
  * 你写的：hybridSearch() —— 两路召回 → min-max 归一化 → 加权合并 → 排序。这是「召回质量」的决策落点。
  * 已就位（gen）：keywordSearch(BM25) / normalizeMinMax / mmrSelect / jaccardSimilarity / tokenize。
  */
-import type { Chunk } from './chunker.js';
-import { VectorStore } from './store.js';
-import { embed, cosineSimilarity, type EmbeddingFn } from './embedder.js';
+import type { Chunk } from "./chunker.js";
+import { VectorStore } from "./store.js";
+import { embed, cosineSimilarity, type EmbeddingFn } from "./embedder.js";
 
 export interface SearchResult {
   chunk: Chunk;
@@ -46,16 +46,69 @@ export async function hybridSearch(
   query: string,
   topK = 5,
 ): Promise<SearchResult[]> {
-  throw new Error('TODO: s15 —— 实现 hybridSearch()：两路召回 → 归一化 → 加权合并 → topK');
+  const all = store.getAll();
+  if (all.length === 0) return [];
+
+  const candidateCount = Math.min(topK * CANDIDATE_MULTIPLIER, all.length);
+
+  // 向量路径
+  const [queryVec] = await embed(embedFn, [query]);
+  const vecRaw: SearchResult[] = all
+    .map((item) => ({
+      chunk: item.chunk,
+      score: cosineSimilarity(queryVec, item.embedding),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, candidateCount);
+
+  // 关键词路径 (BM25)
+  const terms = tokenize(query);
+  const kwRaw = keywordSearch(
+    terms,
+    all.map((i) => i.chunk),
+  )
+    .sort((a, b) => b.score - a.score)
+    .slice(0, candidateCount);
+
+  // 归一化：各自映射到 [0,1]
+  const vecScores = vecRaw.map((r) => r.score);
+  const kwScores = kwRaw.map((r) => r.score);
+  const vecNorm = normalizeMinMax(vecScores);
+  const kwNorm = normalizeMinMax(kwScores);
+
+  const vecMap = new Map<string, number>();
+  vecRaw.forEach((r, i) => vecMap.set(r.chunk.id, vecNorm[i]));
+  const kwMap = new Map<string, number>();
+  kwRaw.forEach((r, i) => kwMap.set(r.chunk.id, kwNorm[i]));
+
+  // 合并：两路出现的所有 chunk.id，加权求和
+  const allIds = new Set([...vecMap.keys(), ...kwMap.keys()]);
+  const combined: SearchResult[] = [];
+  for (const id of allIds) {
+    const vec = vecMap.get(id) ?? 0;
+    const kw = kwMap.get(id) ?? 0;
+    combined.push({
+      chunk: all.find((item) => item.chunk.id === id)!.chunk,
+      score: vec * VECTOR_WEIGHT + kw * KEYWORD_WEIGHT,
+    });
+  }
+
+  return combined.sort((a, b) => b.score - a.score).slice(0, topK);
 }
 
 // ── gen：关键词路径（BM25）──
 export function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/[^a-z0-9一-鿿]+/).filter(Boolean);
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9一-鿿]+/)
+    .filter(Boolean);
 }
 
 /** BM25 打分：经典词频 × idf 公式，返回每个 chunk 的原始分（范围不定，靠 normalize 收敛）。 */
-export function keywordSearch(terms: string[], chunks: Chunk[]): SearchResult[] {
+export function keywordSearch(
+  terms: string[],
+  chunks: Chunk[],
+): SearchResult[] {
   const k1 = 1.5;
   const b = 0.75;
   const N = chunks.length || 1;
@@ -69,7 +122,8 @@ export function keywordSearch(terms: string[], chunks: Chunk[]): SearchResult[] 
       const f = doc.filter((t) => t === term).length;
       if (f === 0) continue;
       const idf = Math.log((N - df(term) + 0.5) / (df(term) + 0.5) + 1);
-      score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * doc.length) / avgdl)));
+      score +=
+        idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * doc.length) / avgdl)));
     }
     return { chunk, score };
   });
@@ -93,7 +147,10 @@ export function jaccardSimilarity(a: string, b: string): number {
 }
 
 /** MMR 去重：选结果时兼顾相关性与多样性，避免 top 几名是同话题的重复段落。 */
-export function mmrSelect(results: SearchResult[], topK: number): SearchResult[] {
+export function mmrSelect(
+  results: SearchResult[],
+  topK: number,
+): SearchResult[] {
   if (results.length === 0) return [];
   const selected: SearchResult[] = [results[0]];
   const remaining = results.slice(1);
@@ -103,7 +160,9 @@ export function mmrSelect(results: SearchResult[], topK: number): SearchResult[]
     for (let i = 0; i < remaining.length; i++) {
       const relevance = remaining[i].score;
       const maxSim = Math.max(
-        ...selected.map((s) => jaccardSimilarity(s.chunk.text, remaining[i].chunk.text)),
+        ...selected.map((s) =>
+          jaccardSimilarity(s.chunk.text, remaining[i].chunk.text),
+        ),
       );
       const mmr = MMR_LAMBDA * relevance - (1 - MMR_LAMBDA) * maxSim;
       if (mmr > bestMmr) {
