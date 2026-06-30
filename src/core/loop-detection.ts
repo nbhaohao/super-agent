@@ -10,17 +10,26 @@
  *
  * 设计：用工厂返回独立实例（闭包持状态），不是模块全局——可并发、可在测试里隔离。
  */
-import { createHash } from 'node:crypto';
+import { createHash } from "node:crypto";
 
 const HISTORY_SIZE = 30;
 const WARNING_THRESHOLD = 5;
 const CRITICAL_THRESHOLD = 8;
 const BREAKER_THRESHOLD = 10;
 
-export type DetectorKind = 'generic_repeat' | 'ping_pong' | 'global_circuit_breaker';
+export type DetectorKind =
+  | "generic_repeat"
+  | "ping_pong"
+  | "global_circuit_breaker";
 export type DetectionResult =
   | { stuck: false }
-  | { stuck: true; level: 'warning' | 'critical'; detector: DetectorKind; count: number; message: string };
+  | {
+      stuck: true;
+      level: "warning" | "critical";
+      detector: DetectorKind;
+      count: number;
+      message: string;
+    };
 
 interface ToolCallRecord {
   toolName: string;
@@ -30,15 +39,15 @@ interface ToolCallRecord {
 
 /** 参数稳定序列化：key 排序，保证 {a,b} 和 {b,a} 指纹一致。 */
 function stableStringify(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
 }
 
 function shortHash(input: string): string {
-  return createHash('sha256').update(input).digest('hex').slice(0, 16);
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
 }
 
 export function hashToolCall(toolName: string, params: unknown): string {
@@ -65,7 +74,11 @@ export function createLoopDetector(): LoopDetector {
       const r = history[i];
       if (r.toolName !== toolName || r.argsHash !== argsHash) continue;
       if (!r.resultHash) continue;
-      if (!lastResultHash) { lastResultHash = r.resultHash; streak = 1; continue; }
+      if (!lastResultHash) {
+        lastResultHash = r.resultHash;
+        streak = 1;
+        continue;
+      }
       if (r.resultHash !== lastResultHash) break;
       streak++;
     }
@@ -77,7 +90,10 @@ export function createLoopDetector(): LoopDetector {
     const last = history[history.length - 1];
     let otherHash: string | undefined;
     for (let i = history.length - 2; i >= 0; i--) {
-      if (history[i].argsHash !== last.argsHash) { otherHash = history[i].argsHash; break; }
+      if (history[i].argsHash !== last.argsHash) {
+        otherHash = history[i].argsHash;
+        break;
+      }
     }
     if (!otherHash) return 0;
     let count = 0;
@@ -99,7 +115,11 @@ export function createLoopDetector(): LoopDetector {
       const argsHash = hashToolCall(toolName, params);
       const resultHash = shortHash(stableStringify(result));
       for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].toolName === toolName && history[i].argsHash === argsHash && !history[i].resultHash) {
+        if (
+          history[i].toolName === toolName &&
+          history[i].argsHash === argsHash &&
+          !history[i].resultHash
+        ) {
           history[i].resultHash = resultHash;
           break;
         }
@@ -110,23 +130,55 @@ export function createLoopDetector(): LoopDetector {
 
       const noProgress = getNoProgressStreak(toolName, argsHash);
       if (noProgress >= BREAKER_THRESHOLD) {
-        return { stuck: true, level: 'critical', detector: 'global_circuit_breaker', count: noProgress, message: `[熔断] ${toolName} 已重复 ${noProgress} 次且无进展，强制停止` };
+        return {
+          stuck: true,
+          level: "critical",
+          detector: "global_circuit_breaker",
+          count: noProgress,
+          message: `[熔断] ${toolName} 已重复 ${noProgress} 次且无进展，强制停止`,
+        };
       }
 
       const pingPong = getPingPongCount(argsHash);
       if (pingPong >= CRITICAL_THRESHOLD) {
-        return { stuck: true, level: 'critical', detector: 'ping_pong', count: pingPong, message: `[熔断] 检测到乒乓循环（${pingPong} 次交替），强制停止` };
+        return {
+          stuck: true,
+          level: "critical",
+          detector: "ping_pong",
+          count: pingPong,
+          message: `[熔断] 检测到乒乓循环（${pingPong} 次交替），强制停止`,
+        };
       }
       if (pingPong >= WARNING_THRESHOLD) {
-        return { stuck: true, level: 'warning', detector: 'ping_pong', count: pingPong, message: `[警告] 检测到乒乓循环（${pingPong} 次交替），建议换个思路` };
+        return {
+          stuck: true,
+          level: "warning",
+          detector: "ping_pong",
+          count: pingPong,
+          message: `[警告] 检测到乒乓循环（${pingPong} 次交替），建议换个思路`,
+        };
       }
 
-      const repeat = history.filter((h) => h.toolName === toolName && h.argsHash === argsHash).length;
+      const repeat = history.filter(
+        (h) => h.toolName === toolName && h.argsHash === argsHash,
+      ).length;
       if (repeat >= CRITICAL_THRESHOLD) {
-        return { stuck: true, level: 'critical', detector: 'generic_repeat', count: repeat, message: `[熔断] ${toolName} 相同参数已调用 ${repeat} 次，强制停止` };
+        return {
+          stuck: true,
+          level: "critical",
+          detector: "generic_repeat",
+          count: repeat,
+          message: `[熔断] ${toolName} 相同参数已调用 ${repeat} 次，强制停止`,
+        };
       }
       if (repeat >= WARNING_THRESHOLD) {
-        return { stuck: true, level: 'warning', detector: 'generic_repeat', count: repeat, message: `[警告] ${toolName} 相同参数已调用 ${repeat} 次，你可能陷入了重复` };
+        return {
+          stuck: true,
+          level: "warning",
+          detector: "generic_repeat",
+          count: repeat,
+          message: `[警告] ${toolName} 相同参数已调用 ${repeat} 次，你可能陷入了重复`,
+        };
       }
 
       return { stuck: false };

@@ -8,7 +8,7 @@
 /** 错误是否值得重试。 */
 export function isRetryable(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  const message = error.message || '';
+  const message = error.message || "";
 
   const statusMatch = message.match(/\b(\d{3})\b/);
   if (statusMatch) {
@@ -18,15 +18,20 @@ export function isRetryable(error: unknown): boolean {
     if (status >= 400 && status < 500) return false;
   }
 
-  if (/ECONNRESET|EPIPE|ETIMEDOUT|timeout|fetch failed|network/i.test(message)) return true;
+  if (/ECONNRESET|EPIPE|ETIMEDOUT|timeout|fetch failed|network/i.test(message))
+    return true;
   // AI SDK 把流式中断包装成 NoOutputGeneratedError
-  if (message.includes('No output generated')) return true;
+  if (message.includes("No output generated")) return true;
 
   return false;
 }
 
 /** 第 attempt 次重试该等多久：指数退避 + ±25% 抖动，封顶 maxMs。 */
-export function calculateDelay(attempt: number, baseMs = 500, maxMs = 30000): number {
+export function calculateDelay(
+  attempt: number,
+  baseMs = 500,
+  maxMs = 30000,
+): number {
   const exponential = baseMs * Math.pow(2, attempt - 1);
   const capped = Math.min(exponential, maxMs);
   const jittered = capped + (Math.random() * 2 - 1) * capped * 0.25;
