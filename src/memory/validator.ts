@@ -10,11 +10,11 @@
  * 你写的：validateEntry() —— 单条记忆的 stale_path + never_used 判定。这是「记忆留多久」的决策落点。
  * 已就位（gen）：TTL_BY_TYPE / extractPaths / lintAll。
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import type { MemoryEntry, MemoryType } from './store.js';
+import fs from "node:fs";
+import path from "node:path";
+import type { MemoryEntry, MemoryType } from "./store.js";
 
-export type IssueKind = 'stale_path' | 'never_used' | 'duplicate_name';
+export type IssueKind = "stale_path" | "never_used" | "duplicate_name";
 
 export interface ValidationIssue {
   kind: IssueKind;
@@ -34,7 +34,8 @@ const DAY_MS = 1000 * 60 * 60 * 24;
 
 /** gen：从正文里抽出疑似文件路径（含 / 或带扩展名的 token）。 */
 export function extractPaths(content: string): string[] {
-  const matches = content.match(/[\w./-]*\/[\w./-]+|[\w-]+\.[a-z]{1,5}\b/gi) ?? [];
+  const matches =
+    content.match(/[\w./-]*\/[\w./-]+|[\w-]+\.[a-z]{1,5}\b/gi) ?? [];
   return [...new Set(matches)];
 }
 
@@ -55,12 +56,40 @@ export function extractPaths(content: string): string[] {
  *        message: `已 ${Math.floor(days)} 天没被读过，超过 ${entry.type} 类型的 ${ttl} 天保质期` }。
  *   4. return issues。
  */
-export function validateEntry(entry: MemoryEntry, baseDir = '.'): ValidationIssue[] {
-  throw new Error('TODO: s16 —— 实现 validateEntry()：stale_path（路径不存在）+ never_used（按类型 TTL）');
+export function validateEntry(
+  entry: MemoryEntry,
+  baseDir = ".",
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const p of extractPaths(entry.content)) {
+    const abs = path.isAbsolute(p) ? p : path.join(baseDir, p);
+    if (!fs.existsSync(abs)) {
+      issues.push({
+        kind: "stale_path",
+        filePath: entry.filePath,
+        message: `引用的路径不存在：${p}`,
+      });
+    }
+  }
+  if (entry.lastReadAt) {
+    const ttl = TTL_BY_TYPE[entry.type] ?? 30;
+    const days = (Date.now() - entry.lastReadAt) / DAY_MS;
+    if (days > ttl) {
+      issues.push({
+        kind: "never_used",
+        filePath: entry.filePath,
+        message: `已 ${Math.floor(days)} 天没被读过，超过 ${entry.type} 类型的 ${ttl} 天保质期`,
+      });
+    }
+  }
+  return issues;
 }
 
 // ── gen：全库体检（含跨条目重名检测）──
-export function lintAll(entries: MemoryEntry[], baseDir = '.'): ValidationIssue[] {
+export function lintAll(
+  entries: MemoryEntry[],
+  baseDir = ".",
+): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   for (const entry of entries) issues.push(...validateEntry(entry, baseDir));
   // 重名检测：同 name 出现多次。
@@ -74,7 +103,7 @@ export function lintAll(entries: MemoryEntry[], baseDir = '.'): ValidationIssue[
     if (dups.length > 1) {
       for (const d of dups) {
         issues.push({
-          kind: 'duplicate_name',
+          kind: "duplicate_name",
           filePath: d.filePath,
           message: `与其他记忆重名：${name}（共 ${dups.length} 条）`,
         });
