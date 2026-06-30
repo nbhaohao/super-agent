@@ -1,0 +1,30 @@
+{
+  "name": "super-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "start": "tsx src/cli.ts",
+    "verify": "vitest run",
+    "v": "vitest run -t",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "v:s1": "tsx --env-file-if-exists=.env src/_smoke/s1-chat.ts",
+    "v:s2": "tsx --env-file-if-exists=.env src/_smoke/s2-loop.ts",
+    "v:s3": "tsx --env-file-if-exists=.env src/_smoke/s3-fuses.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^2",
+    "@ai-sdk/openai": "^2",
+    "@ai-sdk/provider": "^2",
+    "ai": "^5",
+    "dotenv": "^16"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}
