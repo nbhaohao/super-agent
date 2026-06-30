@@ -1,13 +1,13 @@
 // 已就位（AI 生成）——上下文三层防线（截断 + TTL 修剪 + Token 估算）
-import type { ModelMessage } from 'ai';
+import type { ModelMessage } from "ai";
 
 const CONTEXT_WINDOW = 200_000; // tokens
 // chars≈4×tokens；乘以 4 得字符阈值
-const SINGLE_MAX_CHARS = CONTEXT_WINDOW * 0.5 * 4;    // 单条 50% window
-const BUDGET_MAX_CHARS = CONTEXT_WINDOW * 0.75 * 4;   // 总量 75% window
-const KEEP_HEAD_TAIL = 1500;                           // soft-prune 后保留字符数
-const SOFT_TTL_MS = 5 * 60 * 1_000;                   // 5 min
-const HARD_TTL_MS = 10 * 60 * 1_000;                  // 10 min
+const SINGLE_MAX_CHARS = CONTEXT_WINDOW * 0.5 * 4; // 单条 50% window
+const BUDGET_MAX_CHARS = CONTEXT_WINDOW * 0.75 * 4; // 总量 75% window
+const KEEP_HEAD_TAIL = 1500; // soft-prune 后保留字符数
+const SOFT_TTL_MS = 5 * 60 * 1_000; // 5 min
+const HARD_TTL_MS = 10 * 60 * 1_000; // 10 min
 
 // Layer 0：Token 追踪（精确 API 值 + 增量估算）
 export class TokenTracker {
@@ -43,23 +43,29 @@ function keepHeadTail(text: string, maxChars: number): string {
   const head = Math.floor(maxChars * 0.6);
   const tail = maxChars - head;
   const dropped = text.length - head - tail;
-  return text.slice(0, head) + `\n... [省略 ${dropped} 字符] ...\n` + text.slice(-tail);
+  return (
+    text.slice(0, head) +
+    `\n... [省略 ${dropped} 字符] ...\n` +
+    text.slice(-tail)
+  );
 }
 
 function toolOutputChars(msg: ModelMessage): number {
-  if (msg.role !== 'tool') return 0;
+  if (msg.role !== "tool") return 0;
   return ((msg as any).content as any[]).reduce(
-    (sum: number, p: any) => sum + String(p.output ?? '').length,
+    (sum: number, p: any) => sum + String(p.output ?? "").length,
     0,
   );
 }
 
 // 含 error/失败/错误 关键词的工具结果跳过修剪——保留负向经验防重复踩坑
 function hasError(msg: ModelMessage): boolean {
-  if (msg.role !== 'tool') return false;
+  if (msg.role !== "tool") return false;
   return ((msg as any).content as any[]).some((p: any) => {
-    const out = String(p.output ?? '').toLowerCase();
-    return out.includes('error') || out.includes('失败') || out.includes('错误');
+    const out = String(p.output ?? "").toLowerCase();
+    return (
+      out.includes("error") || out.includes("失败") || out.includes("错误")
+    );
   });
 }
 
@@ -67,8 +73,10 @@ function truncateToolMsg(msg: ModelMessage, maxChars: number): ModelMessage {
   return {
     ...msg,
     content: ((msg as any).content as any[]).map((p: any) => {
-      const out = String(p.output ?? '');
-      return out.length > maxChars ? { ...p, output: keepHeadTail(out, maxChars) } : p;
+      const out = String(p.output ?? "");
+      return out.length > maxChars
+        ? { ...p, output: keepHeadTail(out, maxChars) }
+        : p;
     }),
   } as ModelMessage;
 }
@@ -91,12 +99,60 @@ export interface TruncateResult {
  *   预算花完后更旧的 tool 消息（且 > KEEP_HEAD_TAIL）整条 output 换 '[tool result compacted]'，compacted++。
  */
 export function truncateToolResults(messages: ModelMessage[]): TruncateResult {
-  // TODO: stage s12
-  // 1. Pass1：map messages，tool 消息 toolOutputChars > SINGLE_MAX_CHARS → truncateToolMsg(msg, SINGLE_MAX_CHARS)，truncated++
-  // 2. 算 Pass1 结果的总 toolOutputChars；若 <= BUDGET_MAX_CHARS 直接返回
-  // 3. Pass2：从头 map，用 remaining=BUDGET_MAX_CHARS 逐条扣预算（保留新近的）；
-  //    预算扣光后、且该条 chars > KEEP_HEAD_TAIL → output 整体换 '[tool result compacted]'，compacted++
-  throw new Error('TODO: stage s12 — truncateToolResults');
+  let truncated = 0;
+
+  // Pass1: single oversized → Head/Tail truncation
+  const pass1 = messages.map((msg) => {
+    if (msg.role === "tool" && toolOutputChars(msg) > SINGLE_MAX_CHARS) {
+      truncated++;
+      return truncateToolMsg(msg, SINGLE_MAX_CHARS);
+    }
+    return msg;
+  });
+
+  // Total after Pass1; under budget → return directly
+  let totalChars = 0;
+  for (const msg of pass1) {
+    totalChars += toolOutputChars(msg);
+  }
+  if (totalChars <= BUDGET_MAX_CHARS) {
+    return { messages: pass1, truncated, compacted: 0 };
+  }
+
+  // Pass2: over budget, allocate from newest to oldest
+  let remaining = BUDGET_MAX_CHARS;
+  const compactSet = new Set<number>();
+  for (let i = pass1.length - 1; i >= 0; i--) {
+    const msg = pass1[i];
+    if (msg.role !== "tool") continue;
+    const chars = toolOutputChars(msg);
+    if (remaining >= chars) {
+      remaining -= chars;
+    } else {
+      compactSet.add(i);
+    }
+  }
+
+  let compacted = 0;
+  const pass2 = pass1.map((msg, i) => {
+    if (
+      msg.role === "tool" &&
+      compactSet.has(i) &&
+      toolOutputChars(msg) > KEEP_HEAD_TAIL
+    ) {
+      compacted++;
+      return {
+        ...msg,
+        content: ((msg as any).content as any[]).map((p: any) => ({
+          ...p,
+          output: "[tool result compacted]",
+        })),
+      } as ModelMessage;
+    }
+    return msg;
+  });
+
+  return { messages: pass2, truncated, compacted };
 }
 
 export interface PruneResult {
@@ -115,7 +171,7 @@ export function ttlPrune(
   let hardPruned = 0;
 
   const result = messages.map((msg, i): ModelMessage => {
-    if (msg.role !== 'tool') return msg;
+    if (msg.role !== "tool") return msg;
     if (hasError(msg)) return msg;
 
     const ts = timestamps.get(i);
@@ -128,7 +184,7 @@ export function ttlPrune(
         ...msg,
         content: ((msg as any).content as any[]).map((p: any) => ({
           ...p,
-          output: '[hard-pruned: expired]',
+          output: "[hard-pruned: expired]",
         })),
       } as ModelMessage;
     }
@@ -138,7 +194,7 @@ export function ttlPrune(
       return {
         ...msg,
         content: ((msg as any).content as any[]).map((p: any) => {
-          const out = String(p.output ?? '');
+          const out = String(p.output ?? "");
           return { ...p, output: keepHeadTail(out, KEEP_HEAD_TAIL) };
         }),
       } as ModelMessage;
