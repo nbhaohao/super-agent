@@ -44,6 +44,11 @@ export class ToolRegistry {
   register(...tools: ToolDefinition[]): void {
     for (const tool of tools) this.tools.set(tool.name, tool);
   }
+  /** gen（s18 Plugin 卸载用）：按名摘掉一个工具，同时清掉延迟发现记录。 */
+  unregister(name: string): boolean {
+    this.discoveredTools.delete(name);
+    return this.tools.delete(name);
+  }
   get(name: string): ToolDefinition | undefined {
     return this.tools.get(name);
   }
