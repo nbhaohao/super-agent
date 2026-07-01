@@ -84,7 +84,31 @@ export class SkillLoader {
    */
   buildPromptSection(activeSkills: Set<string>): string | null {
     // NOTE: stage 1 (s17) —— 渐进式加载：激活注入全文、未激活只列 name+desc
-    throw new Error("TODO: stage 1 (s17) — buildPromptSection 未实现");
+    if (this.skills.size === 0) return null;
+
+    const lines: string[] = [];
+
+    // 已激活：注入完整 SOP
+    for (const name of activeSkills) {
+      const skill = this.skills.get(name);
+      if (!skill) continue;
+      lines.push(`[激活的 Skill: ${name}]`);
+      lines.push(skill.content);
+      lines.push("");
+    }
+
+    // 未激活：只列 name + description（省 token）
+    const inactive = this.list().filter((s) => !activeSkills.has(s.name));
+    if (inactive.length > 0) {
+      lines.push("可用的 Skills（输入 /skill load <name> 激活）：");
+      for (const s of inactive) {
+        let line = `  /${s.name} \u2014 ${s.description}`;
+        if (s.whenToUse) line += `（适用场景: ${s.whenToUse}）`;
+        lines.push(line);
+      }
+    }
+
+    return lines.length > 0 ? lines.join("\n") : null;
   }
 
   // ── gen：极简 frontmatter 解析（生产可换 gray-matter，非重点）──
