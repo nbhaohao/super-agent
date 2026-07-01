@@ -26,7 +26,10 @@
     "v:s13": "tsx --env-file-if-exists=.env src/_smoke/m03-context.ts 13",
     "v:s14": "tsx --env-file-if-exists=.env src/_smoke/m04-memory.ts 14",
     "v:s15": "tsx --env-file-if-exists=.env src/_smoke/m04-memory.ts 15",
-    "v:s16": "tsx --env-file-if-exists=.env src/_smoke/m04-memory.ts 16"
+    "v:s16": "tsx --env-file-if-exists=.env src/_smoke/m04-memory.ts 16",
+    "v:s17": "tsx --env-file-if-exists=.env src/_smoke/m05-ext.ts 17",
+    "v:s18": "tsx --env-file-if-exists=.env src/_smoke/m05-ext.ts 18",
+    "v:s19": "tsx --env-file-if-exists=.env src/_smoke/m05-ext.ts 19"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2",
