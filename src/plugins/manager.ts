@@ -43,7 +43,43 @@ export class PluginManager {
     config?: PluginConfig,
   ): Promise<string[]> {
     // NOTE: stage 2 (s18) —— 受控 api + 命名空间前缀 + 错误隔离
-    throw new Error("TODO: stage 2 (s18) — PluginManager.load 未实现");
+    if (this.plugins.has(definition.name)) {
+      throw new Error(`插件 "${definition.name}" 已加载`);
+    }
+
+    const resolvedConfig = this.resolveEnvVars({
+      ...definition.config,
+      ...config,
+    });
+    const registeredTools: string[] = [];
+    const api: PluginApi = {
+      registerTools: (tools) => {
+        for (const tool of tools) {
+          const prefixed: ToolDefinition = {
+            ...tool,
+            name: `${definition.name}__${tool.name}`,
+            description: `[Plugin:${definition.name}] ${tool.description}`,
+          };
+          this.registry.register(prefixed);
+          registeredTools.push(prefixed.name);
+        }
+      },
+      getConfig: () => resolvedConfig,
+      log: (m) => console.log(`  [plugin:${definition.name}] ${m}`),
+    };
+    try {
+      await definition.activate(api);
+    } catch (err) {
+      console.error(
+        `  [plugin:${definition.name}] activate 出错: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
+    }
+    this.plugins.set(definition.name, {
+      definition,
+      tools: registeredTools,
+    });
+    return registeredTools;
   }
 
   // ── gen：卸载（destroy → 摘工具 → 删记录），已就位 ──
