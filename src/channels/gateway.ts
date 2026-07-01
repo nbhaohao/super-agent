@@ -13,10 +13,7 @@
  * ✍️ 你写（s19 核心）：handleIncoming —— 按 sender 分会话、跑 agent、抽回复、原路发回。
  */
 import type { ModelMessage } from "ai";
-import type {
-  ChannelDefinition,
-  IncomingMessage,
-} from "./types.js";
+import type { ChannelDefinition, IncomingMessage } from "./types.js";
 
 export interface GatewayOptions {
   buildSystem: () => string;
@@ -74,8 +71,30 @@ export class ChannelGateway {
     channelName: string,
     msg: IncomingMessage,
   ): Promise<void> {
-    // NOTE: stage 3 (s19) —— 分会话路由 + 回复原路发回
-    throw new Error("TODO: stage 3 (s19) — handleIncoming 未实现");
+    const sessionKey = `${channelName}:${msg.senderId}`;
+    if (!this.sessions.has(sessionKey)) {
+      this.sessions.set(sessionKey, []);
+    }
+    const messages = this.sessions.get(sessionKey)!;
+    messages.push({ role: "user", content: msg.text });
+
+    const system = this.options.buildSystem();
+    await this.options.runAgent(messages, system);
+
+    const last = messages[messages.length - 1];
+    if (last.role === "assistant") {
+      const replyText = extractText(last.content);
+      if (replyText) {
+        const channel = this.channels.get(channelName);
+        if (channel) {
+          await channel.send({
+            channelId: msg.channelId,
+            recipientId: msg.senderId,
+            text: replyText,
+          });
+        }
+      }
+    }
   }
 }
 
